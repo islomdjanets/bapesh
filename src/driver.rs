@@ -84,8 +84,8 @@ impl Driver {
 
     pub fn create_file(path: String, content: String) -> Result<fs::File> {
         let mut file = fs::File::create(path).unwrap();
-        if content.len() != 0 {
-            file.write_all(content.as_bytes());
+        if !content.is_empty() {
+            file.write_all(content.as_bytes()).unwrap();
         }
 
         //fs::write("myfile.txt", "new Data");
@@ -94,10 +94,14 @@ impl Driver {
     }
 
     pub fn create_directory( path: String, open: bool ) -> Option<fs::ReadDir> {
-        fs::create_dir(&path).unwrap();
-        if open {
-            return Some(fs::read_dir(&path).unwrap())
-        }
+        match fs::create_dir(&path) {
+            Ok(_) => {
+                if open {
+                    return Some(fs::read_dir(&path).unwrap());
+                }
+            },
+            Err(_) => return None,
+        };
         None
     }
 

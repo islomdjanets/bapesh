@@ -1,4 +1,4 @@
-use std::{str::{self, FromStr}, net::TcpStream, io::{Read, Result}, fmt::Display, collections::HashMap};
+use std::{str::{self, FromStr}, net::TcpStream, io::{Read, Result}, fmt::Display, collections::HashMap, borrow::Cow};
 use crate::driver::Driver;
 
 const HTTP_VERSION: &str = "HTTP/1.1";
@@ -129,7 +129,7 @@ impl ToString for Status_Code {
     }
 }
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Eq, Hash, Clone)]
 pub enum Method {
     GET,
     POST,
@@ -152,6 +152,11 @@ impl FromStr for Method {
             "POST" => Ok(Method::POST),
             "PUT" => Ok(Method::PUT),
             "DELETE" => Ok(Method::DELETE),
+            "HEAD" => Ok(Method::HEAD),
+            "OPTIONS" => Ok(Method::OPTIONS),
+            "CONNECT" => Ok(Method::CONNECT),
+            "TRACE" => Ok(Method::TRACE),
+            "PATCH" => Ok(Method::PATCH),
             _ => Ok(Method::OTHER(s.into())),
             //_ => ()
         }
@@ -170,7 +175,7 @@ impl Request {
         let mut buffer = [0; 1024];
 
         stream.read(&mut buffer).unwrap();
-
+         
         let request = String::from_utf8_lossy(&buffer);
 
         let mut parts = request.split("\r\n");
@@ -193,7 +198,7 @@ impl Request {
 
         Request {
             method: Method::from_str(status.nth(0).unwrap()).unwrap(),
-            uri: status.nth(0).unwrap().into(),
+            uri: status.nth(0).unwrap_or("").into(),
             headers,
             body
         }
@@ -225,33 +230,46 @@ impl Response {
             body: Vec::new()
         }
     }
+    
+    pub fn text( content: String ) -> Response {
+        let content_type = Response::get_mime("text").into();
+        let mut headers: HashMap<String, String> = HashMap::new();
+        headers.insert("Content-Type".into(), content_type);
+        headers.insert("Content-Length".into(), content.len().to_string());
+        Self { 
+            status: Status_Code::OK, 
+            headers,
+            body: content.into_bytes()
+        }
+    }
 
-    pub fn json( content: Vec<u8> ) -> Result<Response> {
+    pub fn json( content: Vec<u8> ) -> Response {
         let content_type = Response::get_mime("json").into();
         let mut headers: HashMap<String, String> = HashMap::new();
         headers.insert("Content-Type".into(), content_type);
         headers.insert("Content-Length".into(), content.len().to_string());
-        Ok( Self { 
+        Self { 
             status: Status_Code::OK, 
             headers,
             body: content
-        })
+        }
     }
 
-    pub fn html( content: Vec<u8> ) -> Result<Response> {
+    pub fn html( content: Vec<u8> ) -> Response {
         let content_type = Response::get_mime("html").into();
         let mut headers: HashMap<String, String> = HashMap::new();
         headers.insert("Content-Type".into(), content_type);
         headers.insert("Content-Length".into(), content.len().to_string());
-        Ok( Self { 
+        Self { 
             status: Status_Code::OK, 
             headers,
             body: content
-        })
+        }
     }
 
     pub fn get_mime( format: &str ) -> &str {
         match format {
+            "text" => "text/plain",
             "html" => "text/html",
             "svg" => "image/svg+xml",
             "png" => "image/png",
@@ -268,7 +286,7 @@ impl Response {
         matches!(mime, "image/png" | "image/webp" | "image/jpeg")
     }
 
-    pub fn file( path: String ) -> Result<Response> {
+    pub fn file( path: String ) -> Response {
         //let format = ;
         let content_type = Response::get_mime(&path.split('.').last().unwrap().to_string()).into();
         //println!("format: {}", format);
@@ -279,12 +297,12 @@ impl Response {
                 headers.insert("Content-Length".into(), content.len().to_string());
 
                 //println!("{:?}", str::from_utf8(&content).unwrap());
-                Ok(Self { 
+                Self { 
                         status: Status_Code::OK, 
                         headers,
                         //content_type: "js".into(),
                         body: content
-                    })
+                    }
             }
             Err(error) => {
                 //status = "HTTP/1.1 404 Not Found";
@@ -301,7 +319,7 @@ impl Response {
                     return Response::file(new_path);
                 }
                 
-                Err(error)
+                Response::new()
             }
         }
     }
@@ -330,6 +348,16 @@ impl Response {
         result
     }
 }
+
+// impl<I: Into<Response>, E: Into<Error>> From<Result<I, E>> for Response {
+//     fn from(res: Result<I, E>) -> Self {
+//         match res {
+//             Ok(val) => val.into(),
+//             Err(err) => Response::from(err.into()),
+//         }
+//     }
+// }
+
 
 impl Default for Response {
     fn default() -> Self {

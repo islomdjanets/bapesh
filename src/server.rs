@@ -1,156 +1,349 @@
-use std::{ io::*, str, net::{TcpStream, TcpListener}, collections::HashMap};
+use core::fmt;
+use std::{ io::*, ops::Deref, str, net::{TcpStream, TcpListener}, collections::HashMap, thread, sync::{Mutex, Arc}, any::{TypeId, Any}, hash::{BuildHasherDefault, Hasher}};
+// use serde::{Serialize, de};
 
-use crate::handshake::{Method, Request, Response};
+use crate::{handshake::{Method, Request, Response}, cors, responder::Responder, ws};
 
-pub type Resources = HashMap<String, Box<dyn Resource>>;
-pub type Handler = fn(&Request, &mut Resources) -> Result<Response>;
+pub type Handler = fn(&Request, &mut Resources) -> Response;
+pub type Check = fn( &Request ) -> bool;
+// pub type Handler = fn(&Request, &mut Resources) -> dyn Responder;
 
+pub type Routes = Arc<Mutex<HashMap<Method, Vec<Route>>>>;
+
+#[derive(Debug, Default)]
+struct NoOpHasher(u64);
+
+impl Hasher for NoOpHasher {
+    fn write(&mut self, _bytes: &[u8]) {
+        unimplemented!("This NoOpHasher can only handle u64s")
+    }
+
+    fn write_u64(&mut self, i: u64) {
+        self.0 = i;
+    }
+
+    fn finish(&self) -> u64 {
+        self.0
+    }
+}
+
+#[derive(PartialEq, Eq, Hash)]
 pub struct Route {
-    method: Method,
     uri: fn(&Request) -> bool,
     handler: Handler
 }
-//
-// pub struct Server {
-//     pub address: SocketAddr,
-//     pub routes: HashMap<Route, Route_Handler>,
-// }
-//
-// impl Server {
-//    pub async fn run(&self) -> std::io::Result<()> {
-//        let listener: TcpListener = TcpListener::bind(self.address).await?;
-//        println!("{} listening on port:{}", "server".green(), self.address.to_string().red());
-//
-//        loop {
-//             let ( mut stream: TcpStream, _ ) = listener.accept().await?;
-//             let routes = self.routes.clone(); // WTF???!!!
-//             let middleware = Arc::clone(&self.middleware);
-//
-//             tokio::spawn( async move {
-//                 let mut buffer = [0; 1024];
-//                 let _ = stream.read(&mut buffer).await.unwrap();
-//
-//                 let request = parse_request(&buffer).unwrap();
-//
-//                 let future_response = handle_route( request,)
-//             })
-//        }
-//    }
-// }
-//
 
-pub trait Resource {
-   // fn get_session( &mut self, project_name: String ) -> Option<&mut Session>;
-   // fn add_session( &mut self, key: String, value: Session );
-   
-    fn get_resource( &mut self, project_name: String ) -> Option<&mut dyn Resource>;
-    fn add_resource( &mut self, key: String, value: dyn Resource );
+pub struct Data<T: ?Sized>(Arc<T>);
+impl<T> Data<T> {
+    /// Create new `Data` instance.
+    pub fn new(state: T) -> Data<T> {
+        Data(Arc::new(state))
+    }
+}
+
+impl<T: ?Sized> Data<T> {
+    /// Returns reference to inner `T`.
+    pub fn get_ref(&self) -> &T {
+        self.0.as_ref()
+    }
+
+    /// Unwraps to the internal `Arc<T>`
+    pub fn into_inner(self) -> Arc<T> {
+        self.0
+    }
+}
+
+impl<T: ?Sized> Deref for Data<T> {
+    type Target = Arc<T>;
+
+    fn deref(&self) -> &Arc<T> {
+        &self.0
+    }
+}
+
+impl<T: ?Sized> Clone for Data<T> {
+    fn clone(&self) -> Data<T> {
+        Data(Arc::clone(&self.0))
+    }
+}
+
+impl<T: ?Sized> From<Arc<T>> for Data<T> {
+    fn from(arc: Arc<T>) -> Self {
+        Data(arc)
+    }
+}
+
+impl<T: Default> Default for Data<T> {
+    fn default() -> Self {
+        Data::new(T::default())
+    }
+}
+
+// impl<T> Serialize for Data<T>
+// where
+//     T: Serialize,
+// {
+//     fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+//     where
+//         S: serde::Serializer,
+//     {
+//         self.0.serialize(serializer)
+//     }
+// }
+// impl<'de, T> de::Deserialize<'de> for Data<T>
+// where
+//     T: de::Deserialize<'de>,
+// {
+//     fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+//     where
+//         D: de::Deserializer<'de>,
+//     {
+//         Ok(Data::new(T::deserialize(deserializer)?))
+//     }
+// }
+//
+#[derive(Default)]
+pub struct Resources {
+    /// Use AHasher with a std HashMap with for faster lookups on the small `TypeId` keys.
+    map: HashMap<TypeId, Box<dyn Any>, BuildHasherDefault<NoOpHasher>>,
+}
+
+impl Resources {
+    /// Creates an empty `Extensions`.
+    #[inline]
+    pub fn new() -> Self {
+        Self {
+            map: HashMap::default(),
+        }
+    }
+
+    pub fn insert<T: 'static>(&mut self, val: T) -> Option<T> {
+        self.map
+            .insert(TypeId::of::<T>(), Box::new(val))
+            .and_then(downcast_owned)
+    }
+
+    pub fn contains<T: 'static>(&self) -> bool {
+        self.map.contains_key(&TypeId::of::<T>())
+    }
+
+    pub fn get<T: 'static>(&self) -> Option<&T> {
+        self.map
+            .get(&TypeId::of::<T>())
+            .and_then(|boxed| boxed.downcast_ref())
+    }
+
+    pub fn get_mut<T: 'static>(&mut self) -> Option<&mut T> {
+        self.map
+            .get_mut(&TypeId::of::<T>())
+            .and_then(|boxed| boxed.downcast_mut())
+    }
+
+    pub fn remove<T: 'static>(&mut self) -> Option<T> {
+        self.map.remove(&TypeId::of::<T>()).and_then(downcast_owned)
+    }
+
+    #[inline]
+    pub fn clear(&mut self) {
+        self.map.clear();
+    }
+
+    pub fn extend(&mut self, other: Resources) {
+        self.map.extend(other.map);
+    }
+}
+
+impl fmt::Debug for Resources {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("Extensions").finish()
+    }
+}
+
+fn downcast_owned<T: 'static>(boxed: Box<dyn Any>) -> Option<T> {
+    boxed.downcast().ok().map(|boxed| *boxed)
 }
 
 pub struct Server {
-    routes: Vec<Route>,
-    resources: HashMap<String, Box<dyn Resource>>
+    host: String,
+    port: u16,
+    routes: Routes,
+    resources: Arc<Mutex<Resources>>,
 }
 
 impl Server {
     pub fn new() -> Self {
         Server {
-            routes: vec![],
-            resources: HashMap::new()
+            host: "127.0.0.1".into(),
+            port: 7878,
+            routes: Arc::new(Mutex::new(HashMap::new())),
+            resources: Arc::new(Mutex::new(Resources::new())),
         }
     }
 
-    pub fn add_resourse( &mut self, name: String, resource: Box<dyn Resource> ) -> &mut Self {
-        self.resources.insert(name, resource);
+    pub fn cors( &mut self, options: cors::Cors ) -> &mut Self {
+        
+        self.add_resourse(options);
+        self.add_route( Route {
+            uri: cors::is_cors,
+            handler: cors::verify_cors
+        },  Method::OPTIONS);
         self
     }
 
-    pub async fn bind(&mut self, host: &str, port: u16, multithreaded: bool) -> &mut Self {
-        //println!("bind");
+    pub fn ws( &mut self, uri: Check, options: ws::WebSocket ) -> &mut Self {
 
-        // let host_array = host.split('.');
-        //let address = SocketAddr::from((host, port));
-
-        let listener = TcpListener::bind(format!("{host}:{port}")).unwrap();
-
-        if multithreaded {
-            // let pool = ThreadPool::new(4);
-
-            // for stream in listener.incoming() {
-            //     let stream = stream.unwrap();
-
-            //     pool.execute(|| {
-            //         self.handle_connection(stream);
-            //     });
-            // }
-        } else {
-            for stream in listener.incoming() {
-                let stream = stream.unwrap();
-
-                self.handle_connection(stream).await;
-            }
-        }
-
-        // loop {
-        //     let (socket, _) = listener.accept();
-        //     self.handle_connection(socket).await;
-        // }
-
+        self.add_resourse(options);
+        self.add_route( Route {
+            uri,
+            handler: ws::update_to_websocket
+        },  Method::GET);
         self
     }
 
-    async fn handle_connection(&mut self, mut stream: TcpStream) {
+    pub fn add_resourse<U: 'static>(&mut self, resourse: U) -> &mut Self {
+        // let resourse = Data::new(resourse);
+        self.resources.lock().unwrap().insert(resourse);
+        self
+    }
+
+    // async fn handle_ws_connection( mut stream: TcpStream ) {
+    //     let mut websocket = ws::accept(stream).unwrap();
+    //     loop {
+    //         let msg = websocket.read().unwrap();
+    //         // We do not want to send back ping/pong messages.
+    //
+    //         // if msg.is_close() {
+    //         //     println!("close");
+    //         // }
+    //         // else if msg.is_empty() {
+    //         //     println!("open?");
+    //         // }
+    //         // else if msg.is_binary() || msg.is_text() {
+    //         //     // // websocket.send(msg).unwrap();
+    //         //     //
+    //         //     // let json : JSON = serde_json::from_str(&msg.to_string()).unwrap();
+    //         //     // let message_type = Message_Type::from_str(json["#type"].clone().as_str().unwrap()).unwrap();
+    //         //     // println!("message type is : {:?}", message_type);
+    //         // }
+    //     }
+    // }
+
+    async fn handle_connection( mut stream: TcpStream, routes: Routes, resources: Arc<Mutex<Resources>> ) {
         let request = Request::new(&stream);
 
         // stream // socket
 
-        for route in self.routes.iter() {
-            if route.method == request.method && (route.uri)(&request) {
-                if let Ok( response ) = (route.handler)(&request, &mut self.resources) {
-                    println!("OK");
+        if let Some(routes) = routes.lock().unwrap().get(&request.method) {
+            for route in routes  {
+                if (route.uri)(&request) {
+                    // let responder = Box::new((route.handler)(&request, &mut self.resources));
+                    // let response = responder.respond();
+                    let mut res = resources.lock().unwrap(); 
+                    let response = (route.handler)(&request, &mut res);
                     stream.write_all(response.get().as_bytes()).unwrap();
                     if !response.body.is_empty() {
                         stream.write_all(&response.body).unwrap();
-                        println!("write body");
                     }
                     stream.flush().unwrap();
-                };
-                return;
+                    return; 
+                } 
             }
         }
     }
 
-    pub fn run(&self) -> &Self {
-        //println!("run");
-        self
-    }
-
-    pub fn get(&mut self, uri: fn( request: &Request ) -> bool, handler: Handler ) -> &mut Self {
-        self.routes.push(Route {
-            method: Method::GET,
-            uri,
-            handler,
-        });
+    pub fn bind(&mut self, host: &str, port: u16) -> &mut Self {
+        
+        self.host = host.into();
+        self.port = port;
 
         self
     }
 
-    pub fn post(&mut self, uri: fn( request: &Request ) -> bool, handler: Handler ) -> &mut Self {
-        self.routes.push(Route {
-            method: Method::POST,
+    // pub async fn run_multi( self ) {
+    //     let listener = TcpListener::bind(format!("{}:{}", self.host, self.port)).unwrap();
+    //     for stream in listener.incoming() {
+    //         let stream = stream.unwrap();
+    //
+    //         thread::spawn(move || {
+    //             Server::handle_connection(stream, Arc::clone( &self.routes ), Arc::clone( &self.resources ) );
+    //         });
+    //     }
+    // }
+
+    pub async fn run( &mut self ) {
+        let listener = TcpListener::bind(format!("{}:{}", self.host, self.port)).unwrap();
+
+        // if self.resources.lock().unwrap().contains::<ws::WebSocket>()
+        for stream in listener.incoming() {
+            let stream = stream.unwrap();
+
+            Server::handle_connection(
+                stream,
+                Arc::clone( &self.routes ),
+                Arc::clone( &self.resources )
+            ).await;
+        }
+
+        // loop {
+        //     let (socket,_) = listener.accept().unwrap();
+        //     self.handle_connection(socket).await;
+        // }
+        // self
+    }
+
+    fn add_route(&mut self, route: Route, method: Method ) { 
+        let mut routes = self.routes.lock().unwrap();
+
+        match routes.get_mut(&method) {
+            Some(routes) => routes.push(route),
+            None => {
+                routes.insert(method.clone(), Vec::new());
+                routes.get_mut(&method).unwrap().push(route);
+            },
+        };
+    }
+
+    pub fn get(&mut self, uri: Check, handler: Handler ) -> &mut Self {
+        self.add_route(Route {
             uri,
             handler,
-        });
+        }, Method::GET);
 
         self
     }
 
-    pub fn delete(&mut self, uri: fn( request: &Request ) -> bool, handler: Handler ) -> &mut Self {
-        self.routes.push(Route {
-            method: Method::DELETE,
+    pub fn post(&mut self, uri: Check, handler: Handler ) -> &mut Self {
+        self.add_route(Route {
             uri,
             handler,
-        });
+        }, Method::POST);
+
+        self
+    }
+
+    pub fn delete(&mut self, uri: Check, handler: Handler ) -> &mut Self {
+        self.add_route(Route {
+            uri,
+            handler,
+        }, Method::DELETE);
+
+        self
+    }
+
+    pub fn put(&mut self, uri: Check, handler: Handler ) -> &mut Self {
+        self.add_route(Route {
+            uri,
+            handler,
+        }, Method::PUT);
+
+        self
+    }
+
+    pub fn options(&mut self, uri: Check, handler: Handler ) -> &mut Self {
+        self.add_route(Route {
+            uri,
+            handler,
+        }, Method::OPTIONS);
 
         self
     }
@@ -161,3 +354,4 @@ impl Default for Server {
         Self::new()
     }
 }
+
