@@ -1,6 +1,5 @@
 use core::fmt;
 use std::{ io::*, ops::Deref, str, net::{TcpStream, TcpListener}, collections::HashMap, thread, sync::{Mutex, Arc}, any::{TypeId, Any}, hash::{BuildHasherDefault, Hasher}};
-// use serde::{Serialize, de};
 
 use crate::{handshake::{Method, Request, Response}, cors, responder::Responder, ws};
 
@@ -9,6 +8,7 @@ pub type Check = fn( &Request ) -> bool;
 // pub type Handler = fn(&Request, &mut Resources) -> dyn Responder;
 
 pub type Routes = Arc<Mutex<HashMap<Method, Vec<Route>>>>;
+pub type Middlewares = Arc<Mutex<Vec<Middleware>>>;
 
 #[derive(Debug, Default)]
 struct NoOpHasher(u64);
@@ -29,9 +29,11 @@ impl Hasher for NoOpHasher {
 
 #[derive(PartialEq, Eq, Hash)]
 pub struct Route {
-    uri: fn(&Request) -> bool,
+    uri: Check,
     handler: Handler
 }
+
+pub type Middleware = fn(&mut Response, &mut Resources);
 
 pub struct Data<T: ?Sized>(Arc<T>);
 impl<T> Data<T> {
@@ -167,6 +169,7 @@ pub struct Server {
     host: String,
     port: u16,
     routes: Routes,
+    middlewares: Middlewares,
     resources: Arc<Mutex<Resources>>,
 }
 
@@ -176,6 +179,7 @@ impl Server {
             host: "127.0.0.1".into(),
             port: 7878,
             routes: Arc::new(Mutex::new(HashMap::new())),
+            middlewares: Arc::new(Mutex::new(Vec::new())),
             resources: Arc::new(Mutex::new(Resources::new())),
         }
     }
@@ -183,9 +187,10 @@ impl Server {
     pub fn cors( &mut self, options: cors::Cors ) -> &mut Self {
         
         self.add_resourse(options);
+        self.add_middleware(cors::middleware);
         self.add_route( Route {
-            uri: cors::is_cors,
-            handler: cors::verify_cors
+            uri: cors::is_preflight,
+            handler: cors::handle_preflight
         },  Method::OPTIONS);
         self
     }
@@ -197,6 +202,11 @@ impl Server {
             uri,
             handler: ws::update_to_websocket
         },  Method::GET);
+        self
+    }
+
+    pub fn add_middleware( &mut self, middleware: Middleware ) -> &mut Self {
+        self.middlewares.lock().unwrap().push(middleware);
         self
     }
 
@@ -228,7 +238,7 @@ impl Server {
     //     }
     // }
 
-    async fn handle_connection( mut stream: TcpStream, routes: Routes, resources: Arc<Mutex<Resources>> ) {
+    fn handle_connection( mut stream: TcpStream, routes: Routes, resources: Arc<Mutex<Resources>>, middlewares: Middlewares ) {
         let request = Request::new(&stream);
 
         // stream // socket
@@ -239,7 +249,13 @@ impl Server {
                     // let responder = Box::new((route.handler)(&request, &mut self.resources));
                     // let response = responder.respond();
                     let mut res = resources.lock().unwrap(); 
-                    let response = (route.handler)(&request, &mut res);
+                    let mut response = (route.handler)(&request, &mut res);
+                   
+                    let middlewares = middlewares.lock().unwrap();
+                    for middleware in middlewares.iter() {
+                        (middleware)(&mut response, &mut res);
+                    }
+
                     stream.write_all(response.get().as_bytes()).unwrap();
                     if !response.body.is_empty() {
                         stream.write_all(&response.body).unwrap();
@@ -264,13 +280,18 @@ impl Server {
     //     for stream in listener.incoming() {
     //         let stream = stream.unwrap();
     //
-    //         thread::spawn(move || {
-    //             Server::handle_connection(stream, Arc::clone( &self.routes ), Arc::clone( &self.resources ) );
+    //         thread::spawn( move || {
+    //             Server::handle_connection(
+    //                 stream,
+    //                 Arc::clone( &self.routes ),
+    //                 Arc::clone( &self.resources ),
+    //                 Arc::clone( &self.middlewares ),
+    //             );
     //         });
     //     }
     // }
 
-    pub async fn run( &mut self ) {
+    pub fn run( &mut self ) {
         let listener = TcpListener::bind(format!("{}:{}", self.host, self.port)).unwrap();
 
         // if self.resources.lock().unwrap().contains::<ws::WebSocket>()
@@ -280,8 +301,9 @@ impl Server {
             Server::handle_connection(
                 stream,
                 Arc::clone( &self.routes ),
-                Arc::clone( &self.resources )
-            ).await;
+                Arc::clone( &self.resources ),
+                Arc::clone( &self.middlewares )
+            );
         }
 
         // loop {

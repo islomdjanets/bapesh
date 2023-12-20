@@ -1,9 +1,6 @@
-use serde_json;
 use std::{collections::HashMap, fmt::format, io::Read};
 
-use crate::driver::Driver;
-
-type JSON = serde_json::Value;
+use crate::{driver::Driver, json::JSON};
 
 pub struct Database {
     name: String,
@@ -18,8 +15,10 @@ impl Database {
             is_realtime,
             collections: HashMap::new()
         };
-
-        let root = Driver::create_directory(format!("./{name}"), true);
+        
+        if !is_realtime {
+            Driver::create_directory(format!("./{name}"), true);
+        }
 
         db
     }
@@ -28,21 +27,23 @@ impl Database {
         let collection = Collection::new( schema );
         self.collections.insert(name.clone(), collection );
 
-        let path = format!("./{}/{}", self.name, name.clone());
-        let directory = Driver::create_directory(path.clone(), true);
-        let mut schema_file = Driver::open_with_options(
-            format!("{path}/schema.json"),
-            true, false, true, true ).unwrap();
+        if !self.is_realtime {
+            let path = format!("./{}/{}", self.name, name.clone());
+            let directory = Driver::create_directory(path.clone(), true);
+            let mut schema_file = Driver::open_with_options(
+                format!("{path}/schema.json"),
+                true, false, true, true ).unwrap();
 
-        let mut data = String::new();
-        schema_file.read_to_string(&mut data).unwrap();
+            let mut data = String::new();
+            schema_file.read_to_string(&mut data).unwrap();
+        }
 
         self.collections.get(&name).unwrap()
         // &collection
     }
 
     pub fn get_collection( &mut self, name: String, create: bool ) -> Option<&Collection> {
-        
+       
         if self.collections.contains_key(&name) {
             return self.collections.get(&name);
         }
@@ -76,6 +77,7 @@ pub struct Property {
     pub r#default: Option<JSON>,
     pub r#type: JSON,
     pub description: JSON,
+    pub custom: Option<HashMap<String, JSON>>,
 }
 
 impl Property {
@@ -87,9 +89,10 @@ impl Property {
         };
 
         Self {
-            r#default: default,
+            default,
             r#type: json["type"].clone(),
             description: json["description"].clone(),
+            custom: None,
         }
     }
 }
@@ -97,12 +100,17 @@ impl Property {
 #[derive(Debug)]
 pub struct Schema {
     pub parent: Option<String>,
+    pub custom: Option<HashMap<String, Property>>,
     pub properties: HashMap<String, Property>,
 }
 
 impl Schema {
     pub fn new() -> Self {
-        Self { parent: None, properties: HashMap::new() }
+        Self {
+            parent: None,
+            custom: None,
+            properties: HashMap::new(),
+        }
     }
 
     pub fn from_json(json: JSON) -> Self {
@@ -111,13 +119,26 @@ impl Schema {
         } else {
             Some(json["#parent"].to_string())
         };
+
+        let custom = if json["#custom"].is_null() {
+            None
+        } else {
+            let entries = json["#custom"].as_object().unwrap();
+
+            let mut custom_properties: HashMap<String, Property> = HashMap::new();
+            for (key, value) in entries {
+                custom_properties.insert(key.to_string(), Property::from_json(value));
+            }
+            Some(custom_properties)
+        };
+
         let mut properties: HashMap<String, Property> = HashMap::new();
 
         for (key, value) in json.as_object().unwrap() {
             properties.insert(key.to_string(), Property::from_json(value));
         }
 
-        Self { parent, properties }
+        Self { parent, custom, properties }
     }
 }
 
@@ -129,7 +150,7 @@ impl Default for Schema {
 
 #[derive(Debug)]
 pub struct Record {
-    properties: HashMap<String, Property>
+    pub properties: HashMap<String, JSON>
 }
 
 impl Record { // not tested
@@ -137,13 +158,28 @@ impl Record { // not tested
 
         let mut properties = HashMap::new();
         for property in entry.as_object().unwrap() {
-            properties.insert( property.0.clone(), Property::from_json(property.1) );
+            properties.insert( property.0.clone(), property.1.clone() );
         }
+
         Self { properties }
     } 
 
     pub fn from_schema( schema: &Schema ) -> Self {
-        todo!();
+        let mut properties = HashMap::new();
+        for entry in schema.properties.iter() {
+            if entry.0 == "#custom" {
+                continue;
+            }
+            let default = match entry.1.default.clone() {
+                Some(default_value) => default_value,
+                None => JSON::Null,
+            };
+            properties.insert(entry.0.clone(), default);
+        } 
+
+        Self {
+            properties
+        }
     }
 }
 
@@ -164,6 +200,7 @@ impl Collection {
 
     pub fn new_record( &mut self, name: String ) -> Option<&Record> {
         self.records.insert(name.clone(), Record::from_schema(&self.schema));
+
         self.records.get(&name)
     }
 

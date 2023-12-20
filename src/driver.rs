@@ -3,6 +3,8 @@ use std::{
     io::{Read, Result, Write, SeekFrom, Seek}, path::Path,
 };
 
+use crate::json::JSON;
+
 pub struct Driver;
 
 impl Driver {
@@ -40,7 +42,7 @@ impl Driver {
         chunk
     }
 
-    pub fn read_json( path: String ) -> serde_json::Result<serde_json::Value> {
+    pub fn read_json( path: String ) -> serde_json::Result<JSON> { // remove!!!
         //let file = Driver::create_file("data.json".into(), content).unwrap();
         let data = Driver::read_to_string(path).unwrap();
 

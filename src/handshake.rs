@@ -1,5 +1,5 @@
-use std::{str::{self, FromStr}, net::TcpStream, io::{Read, Result}, fmt::Display, collections::HashMap, borrow::Cow};
-use crate::driver::Driver;
+use std::{str::{self, FromStr}, net::TcpStream, io::{Read, BufReader}, fmt::{Display, Error}, collections::HashMap};
+use crate::{driver::Driver, json::JSON};
 
 const HTTP_VERSION: &str = "HTTP/1.1";
 
@@ -55,7 +55,7 @@ impl Status_Code {
             Status_Code::Created => todo!(),
             Status_Code::Accepted => todo!(),
             Status_Code::Non_AuthoritativeInformation => todo!(),
-            Status_Code::NoContent => todo!(),
+            Status_Code::NoContent => 204,
             Status_Code::ResetContent => todo!(),
             Status_Code::PartialContent => todo!(),
             Status_Code::MultipleChoices => todo!(),
@@ -64,7 +64,7 @@ impl Status_Code {
             Status_Code::SeeOther => todo!(),
             Status_Code::NotModified => todo!(),
             Status_Code::UseProxy => todo!(),
-            Status_Code::BadRequest => todo!(),
+            Status_Code::BadRequest => 400,
             Status_Code::Unauthorized => todo!(),
             Status_Code::Forbidden => todo!(),
             Status_Code::NotFound => todo!(),
@@ -163,6 +163,32 @@ impl FromStr for Method {
     }
 }
 
+impl ToString for Method {
+    fn to_string(&self) -> String {
+        let value = match self {
+            Method::GET => "GET",
+            Method::POST => "POST",
+            Method::PUT => "PUT",
+            Method::DELETE => "DELETE",
+            Method::HEAD => "HEAD",
+            Method::OPTIONS => "OPTIONS",
+            Method::CONNECT => "CONNECT",
+            Method::TRACE => "TRACE",
+            Method::PATCH => "PATCH",
+            _ => "OTHER",
+        };
+
+        value.to_string()
+    } 
+}
+
+pub fn header_value_try_into_method( hdr: &String ) -> Option<Method> {
+    match Method::from_str(hdr) {
+        Ok(method) => Some(method),
+        Err(_) => None,
+    }
+}
+
 pub struct Request {
     pub method: Method,
     pub uri: String,
@@ -171,10 +197,19 @@ pub struct Request {
 }
 
 impl Request {
-    pub fn new(mut stream: &TcpStream) -> Self {
-        let mut buffer = [0; 1024];
+    pub fn new(stream: &TcpStream) -> Self {
+        // let mut buffer = [0; 8192];
+        let mut buffer = [0; 2048];
+        // let mut buffer = Vec::new();
 
-        stream.read(&mut buffer).unwrap();
+        // stream.read_exact(&mut buffer).unwrap();
+        // stream.read(&mut buffer).unwrap();
+        BufReader::new(stream).read(&mut buffer).unwrap();
+
+        // let size = stream.read_to_end(&mut buffer).unwrap();
+        // println!("{size}");
+        // let mut buffer = [0; 1024];
+        // stream.read_to_end(&mut buffer).unwrap();
          
         let request = String::from_utf8_lossy(&buffer);
 
@@ -213,6 +248,12 @@ impl Display for Request {
             &self.method, &self.uri, &HTTP_VERSION, self.headers, &str::from_utf8(&self.body).unwrap()
         )
     }
+}
+
+pub trait Response_Error {
+    fn status_code(&self) -> Status_Code;
+
+    fn error(&self) -> Response;
 }
 
 #[derive(Debug)]
@@ -298,15 +339,15 @@ impl Response {
 
                 //println!("{:?}", str::from_utf8(&content).unwrap());
                 Self { 
-                        status: Status_Code::OK, 
-                        headers,
-                        //content_type: "js".into(),
-                        body: content
-                    }
+                    status: Status_Code::OK, 
+                    headers,
+                    //content_type: "js".into(),
+                    body: content
+                }
             }
             Err(error) => {
                 //status = "HTTP/1.1 404 Not Found";
-                println!("path: {} | {}", path, error );
+                // println!("path: {} | {}", path, error );
                 //"NotFound".into()
 
                 let len = path.len() - 3;
@@ -346,6 +387,46 @@ impl Response {
         }
 
         result
+    }
+
+    pub fn set_status( &mut self, status_code: Status_Code ) {
+        self.status = status_code;
+    }
+
+    pub fn error<E: Into<Error>>(self, err: E) -> Self {
+        // ServiceResponse::from_err(err, self.request)
+        self
+    }
+}
+
+impl FromStr for Response {
+    type Err = ();
+
+    fn from_str(s: &str) -> std::result::Result<Self, Self::Err> {
+        Ok(Response::text(s.to_string())) 
+    } 
+}
+
+impl From<String> for Response {
+    fn from(val: String) -> Self {
+        // "".to_string() 
+        Response::text(val)
+    } 
+}
+
+impl From<JSON> for Response {
+    fn from(value: JSON) -> Self {
+        Response::json( value.to_string().as_bytes().to_vec() )
+    } 
+}
+
+impl Response_Error for Request {
+    fn status_code(&self) -> Status_Code {
+        todo!()
+    }
+
+    fn error(&self) -> Response {
+        todo!()
     }
 }
 

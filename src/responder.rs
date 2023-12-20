@@ -1,8 +1,9 @@
+use std::borrow::Cow;
+
 use crate::handshake::{Request, Response};
 
-// #[derive(Sized)]
 pub trait Responder {
-    fn respond(&self ) -> &Response where Response : Sized;
+    fn respond(self ) -> Response where Response : Sized;
 }
 
 impl Responder for Response {
@@ -13,7 +14,7 @@ impl Responder for Response {
     //     self
     // }
     // fn respond(&self) -> &Response where Response : Sized {
-    fn respond(&self) -> &Response {
+    fn respond(self) -> Response {
         self
     }
 }
@@ -34,7 +35,7 @@ impl Responder for Response {
 //         impl Responder for $res {
 //             // type Body = $body;
 //
-//             fn respond(self, _: &Request) -> Response {
+//             fn respond(self) -> Response {
 //                 let res: Response = self.into();
 //                 res.into()
 //             }
@@ -45,7 +46,7 @@ impl Responder for Response {
 //         impl_responder_by_forward_into_base_response!($res, $res);
 //     };
 // }
-//
+// //
 // impl_responder_by_forward_into_base_response!(&'static [u8]);
 // impl_responder_by_forward_into_base_response!(Vec<u8>);
 // // impl_responder_by_forward_into_base_response!(Bytes);
@@ -54,20 +55,22 @@ impl Responder for Response {
 // impl_responder_by_forward_into_base_response!(&'static str);
 // impl_responder_by_forward_into_base_response!(String);
 // // impl_responder_by_forward_into_base_response!(bytestring::ByteString);
-//
-// macro_rules! impl_into_string_responder {
-//     ($res:ty) => {
-//         impl Responder for $res {
-//             // type Body = String;
-//
-//             fn respond(self, _: &Request) -> Response {
-//                 let string: String = self.into();
-//                 let res: Response = string.into();
-//                 res.into()
-//             }
-//         }
-//     };
-// }
-//
+
+macro_rules! impl_into_string_responder {
+    ($res:ty) => {
+        impl Responder for $res {
+            // type Body = String;
+
+            fn respond(self) -> Response {
+                let string: String = self.into();
+                let res: Response = string.into();
+                res.into()
+            }
+        }
+    };
+}
+
 // impl_into_string_responder!(&'_ String);
-// impl_into_string_responder!(Cow<'_, str>);
+impl_into_string_responder!(String);
+impl_into_string_responder!(&str);
+impl_into_string_responder!(Cow<'_, str>);
