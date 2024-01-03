@@ -1,12 +1,22 @@
-use std::{collections::HashMap, io::Result, fmt, net::TcpStream};
+use std::{collections::HashMap, fmt, net::TcpStream, sync::{Arc, Mutex}, io::{Result, Write, Read, BufReader}};
+use crate::{handshake::{Response, Status_Code, Request}, server::{Resources, Check}};
 
 use sha1::Digest;
-
-use crate::{handshake::{Response, Status_Code, Request}, server::{Resources, Check}};
 
 static WS_MAGIC_STRING : &str = "258EAFA5-E914-47DA-95CA-C5AB0DC85B11";
 static BASE64: &[u8] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
 
+const SEVEN_BITS_INTEGER_MARKER: u8 = 125;
+const SIXTEEN_BITS_INTEGER_MARKER: u8 = 126;
+const SIXTYFOUR_BITS_INTEGER_MARKER: u8 = 127;
+
+// const MAX_SIXTEEN_BITS_INTEGER: u8 = 2 ** 16;
+
+const MASK_KEY_BYTES_LENGTH: u8 = 4;
+
+const FIRST_BIT: u8 = 128;
+const OPCODE_TEXT: u8 = 0x01; // 1 bit in binary
+                          //
 fn hash_key( key : &String ) -> String {
     let mut hasher = sha1::Sha1::new();
 
@@ -111,9 +121,9 @@ pub enum Close_Code {
     Other(u16),
 }
 
-impl Into<u16> for Close_Code {
-    fn into(self) -> u16 {
-        match self {
+impl From<Close_Code> for u16 {
+    fn from(val: Close_Code) -> Self {
+        match val {
             Normal => 1000,
             Away => 1001,
             Protocol => 1002,
@@ -179,10 +189,7 @@ pub enum Op_Code {
 impl Op_Code {
     /// Test whether the opcode indicates a control frame.
     pub fn is_control(&self) -> bool {
-        match *self {
-            Text | Binary | Continue => false,
-            _ => true,
-        }
+        !matches!(*self, Text | Binary | Continue)
     }
 }
 
@@ -200,9 +207,9 @@ impl fmt::Display for Op_Code {
     }
 }
 
-impl Into<u8> for Op_Code {
-    fn into(self) -> u8 {
-        match self {
+impl From<Op_Code> for u8 {
+    fn from(val: Op_Code) -> Self {
+        match val {
             Continue => 0,
             Text => 1,
             Binary => 2,
@@ -533,11 +540,13 @@ where
 }
 
 pub struct WebSocket {
+    pub uri: Check,
 }
 
 impl WebSocket {
-    pub fn new() -> Self {
+    pub fn new( uri: Check ) -> Self {
         Self {
+            uri,
         }
     }
 
@@ -550,6 +559,73 @@ impl WebSocket {
     }
 }
 
-// pub fn accept( stream: TcpStream ) -> Result<WebSocket> {
-//     Ok(WebSocket {  })
-// }
+struct Connection<'a> {
+    stream: &'a mut TcpStream
+}
+
+impl<'a> Connection<'a> {
+    pub fn read( &mut self ) -> Option<Message> {
+
+        let mut buffer = [0_u8; 512];
+
+        self.stream.read(&mut buffer).unwrap();
+
+        if buffer.is_empty() {
+            return None
+        }
+
+        // let marker_and_payload_length = self.read_stream(1)[0];
+        //
+        // let length_indicator_in_bits = marker_and_payload_length - FIRST_BIT;
+        //
+        // let mut message_length = 0;
+        // if length_indicator_in_bits <= SEVEN_BITS_INTEGER_MARKER {
+        //     message_length = length_indicator_in_bits;
+        // } else if length_indicator_in_bits == SIXTEEN_BITS_INTEGER_MARKER {
+        //     message_length = buffer[2];
+        // }
+
+        println!("got message");
+        // let message = String::from_utf8_lossy(&buffer);
+        // println!("{}", message);
+
+        Some(Message::Text("Hello vasya".to_string()))
+    }
+
+    fn read_stream( &mut self, size: u8 ) -> Vec<u8> {
+        let mut buffer = [0; 1]; 
+        self.stream.read_exact( &mut buffer ).unwrap();
+        buffer.to_vec()
+    }
+}
+
+
+fn accept( stream: &mut TcpStream ) -> Result<Connection> {
+    Ok(Connection {
+        stream
+    }) 
+}
+
+pub fn handle_connection( stream: &mut TcpStream, _: Arc<Mutex<Resources>> ) {
+
+    let mut client = accept(stream).unwrap();
+    loop {
+        let message = client.read();
+        // println!("{:?}", msg);
+        // We do not want to send back ping/pong messages.
+
+        // if msg.is_close() {
+        //     println!("close");
+        // }
+        // else if msg.is_empty() {
+        //     println!("open?");
+        // }
+        // else if msg.is_binary() || msg.is_text() {
+        //     // // websocket.send(msg).unwrap();
+        //     //
+        //     // let json : JSON = serde_json::from_str(&msg.to_string()).unwrap();
+        //     // let message_type = Message_Type::from_str(json["#type"].clone().as_str().unwrap()).unwrap();
+        //     // println!("message type is : {:?}", message_type);
+        // }
+    }
+}

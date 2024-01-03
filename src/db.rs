@@ -148,6 +148,10 @@ impl Default for Schema {
     }
 }
 
+pub trait From_Record<T> {
+    fn hydrate( record: &Record ) -> T;
+}
+
 #[derive(Debug)]
 pub struct Record {
     pub properties: HashMap<String, JSON>

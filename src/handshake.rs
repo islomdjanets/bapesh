@@ -89,43 +89,44 @@ impl Status_Code {
 
 impl ToString for Status_Code {
     fn to_string(&self) -> String {
-        match self {
-            Status_Code::Continue => "Continue".into(),
-            Status_Code::SwitchingProtocols => "Switching Protocols".into(),
-            Status_Code::OK => "OK".into(),
-            Status_Code::Created => "Created".into(),
-            Status_Code::Accepted => "Accepted".into(),
-            Status_Code::Non_AuthoritativeInformation => "Non-Authoritative Information".into(),
-            Status_Code::NoContent => "No Content".into(),
-            Status_Code::ResetContent => "Reset Content".into(),
-            Status_Code::PartialContent => "Partial Content".into(),
-            Status_Code::MultipleChoices => "Multiple Choices".into(),
-            Status_Code::MovedPermanently => "Moved Permanently".into(),
-            Status_Code::MovedTemporarily => "Moved Temporarily".into(),
-            Status_Code::SeeOther => "See Other".into(),
-            Status_Code::NotModified => "Not Modified".into(),
-            Status_Code::UseProxy => "Use Proxy".into(),
-            Status_Code::BadRequest => "Bad Request".into(),
-            Status_Code::Unauthorized => "Unauthorized".into(),
-            Status_Code::Forbidden => "Forbidden".into(),
-            Status_Code::NotFound => "Not Found".into(),
-            Status_Code::MethodNotAllowed => "Method Not Allowed".into(),
-            Status_Code::NotAcceptable => "Not Acceptable".into(),
-            Status_Code::Conflict => "Conflict".into(),
-            Status_Code::Gone => "Gone".into(),
-            Status_Code::LengthRequired => "Length Required".into(),
-            Status_Code::PreconditionFailed => "Precondition Failed".into(),
-            Status_Code::RequestEntityTooLarge => "Request Entity Too Large".into(),
-            Status_Code::Request_URITooLarge => "Request-URI Too Large".into(),
-            Status_Code::UnsupportedMediaType => "Unsupported Media Type".into(),
-            Status_Code::InternalServerError => "Internal Server Error".into(),
-            Status_Code::NotImplemented => "Not Implemented".into(),
-            Status_Code::BadGateway => "Bad Gateway".into(),
-            Status_Code::ServiceUnavailable => "Service Unavailable".into(),
-            Status_Code::GatewayTime_out => "Gateway Time-out".into(),
-            Status_Code::HTTPVersionnotsupported => "HTTP Version not supported".into(),
+        let status = match self {
+            Status_Code::Continue => "Continue",
+            Status_Code::SwitchingProtocols => "Switching Protocols",
+            Status_Code::OK => "OK",
+            Status_Code::Created => "Created",
+            Status_Code::Accepted => "Accepted",
+            Status_Code::Non_AuthoritativeInformation => "Non-Authoritative Information",
+            Status_Code::NoContent => "No Content",
+            Status_Code::ResetContent => "Reset Content",
+            Status_Code::PartialContent => "Partial Content",
+            Status_Code::MultipleChoices => "Multiple Choices",
+            Status_Code::MovedPermanently => "Moved Permanently",
+            Status_Code::MovedTemporarily => "Moved Temporarily",
+            Status_Code::SeeOther => "See Other",
+            Status_Code::NotModified => "Not Modified",
+            Status_Code::UseProxy => "Use Proxy",
+            Status_Code::BadRequest => "Bad Request",
+            Status_Code::Unauthorized => "Unauthorized",
+            Status_Code::Forbidden => "Forbidden",
+            Status_Code::NotFound => "Not Found",
+            Status_Code::MethodNotAllowed => "Method Not Allowed",
+            Status_Code::NotAcceptable => "Not Acceptable",
+            Status_Code::Conflict => "Conflict",
+            Status_Code::Gone => "Gone",
+            Status_Code::LengthRequired => "Length Required",
+            Status_Code::PreconditionFailed => "Precondition Failed",
+            Status_Code::RequestEntityTooLarge => "Request Entity Too Large",
+            Status_Code::Request_URITooLarge => "Request-URI Too Large",
+            Status_Code::UnsupportedMediaType => "Unsupported Media Type",
+            Status_Code::InternalServerError => "Internal Server Error",
+            Status_Code::NotImplemented => "Not Implemented",
+            Status_Code::BadGateway => "Bad Gateway",
+            Status_Code::ServiceUnavailable => "Service Unavailable",
+            Status_Code::GatewayTime_out => "Gateway Time-out",
+            Status_Code::HTTPVersionnotsupported => "HTTP Version not supported",
             //_ => "undefined".into(),
-        }
+        };
+        status.into()
     }
 }
 
@@ -284,15 +285,17 @@ impl Response {
         }
     }
 
-    pub fn json( content: Vec<u8> ) -> Response {
+    pub fn json( content: JSON ) -> Response {
         let content_type = Response::get_mime("json").into();
+        let bytes = content.to_string().as_bytes().to_vec();
+
         let mut headers: HashMap<String, String> = HashMap::new();
         headers.insert("Content-Type".into(), content_type);
-        headers.insert("Content-Length".into(), content.len().to_string());
+        headers.insert("Content-Length".into(), bytes.len().to_string());
         Self { 
             status: Status_Code::OK, 
             headers,
-            body: content
+            body: bytes
         }
     }
 
@@ -399,24 +402,37 @@ impl Response {
     }
 }
 
-impl FromStr for Response {
-    type Err = ();
+// impl FromStr for Response {
+//     type Err = ();
+//
+//     fn from_str(s: &str) -> std::result::Result<Self, Self::Err> {
+//         Ok(Response::text(s.to_string())) 
+//     } 
+// }
 
-    fn from_str(s: &str) -> std::result::Result<Self, Self::Err> {
-        Ok(Response::text(s.to_string())) 
+impl From<Status_Code> for Response {
+    fn from(val: Status_Code) -> Self {
+        let mut response = Response::new();
+        response.set_status(val);
+        response
+    } 
+}
+
+impl From<&str> for Response {
+    fn from(val: &str) -> Self {
+        Response::text(val.to_string())
     } 
 }
 
 impl From<String> for Response {
     fn from(val: String) -> Self {
-        // "".to_string() 
         Response::text(val)
     } 
 }
 
 impl From<JSON> for Response {
     fn from(value: JSON) -> Self {
-        Response::json( value.to_string().as_bytes().to_vec() )
+        Response::json( value )
     } 
 }
 
@@ -429,16 +445,6 @@ impl Response_Error for Request {
         todo!()
     }
 }
-
-// impl<I: Into<Response>, E: Into<Error>> From<Result<I, E>> for Response {
-//     fn from(res: Result<I, E>) -> Self {
-//         match res {
-//             Ok(val) => val.into(),
-//             Err(err) => Response::from(err.into()),
-//         }
-//     }
-// }
-
 
 impl Default for Response {
     fn default() -> Self {
