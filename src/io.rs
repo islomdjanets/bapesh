@@ -1,10 +1,11 @@
+// use core::task::ready;
 use std::{
     fmt,
     mem::MaybeUninit,
     io::{self,SeekFrom, IoSlice},
     ops::DerefMut,
     pin::Pin,
-    task::{Context, Poll},
+    task::{Context, Poll, ready},
 };
 
 // use crate::io::sys;

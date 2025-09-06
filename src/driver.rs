@@ -8,19 +8,19 @@ use crate::json::JSON;
 pub struct Driver;
 
 impl Driver {
-    pub fn read_binary(path: &String) -> Result<Vec<u8>> {
+    pub fn read_binary(path: &str) -> Result<Vec<u8>> {
         fs::read(path)
     }
 
-    pub fn read_to_string(path: String) -> Result<String> {
+    pub fn read_to_string(path: &str) -> Result<String> {
         fs::read_to_string(path)
     }
 
-    pub fn is_directory( path: &String ) -> bool {
+    pub fn is_directory( path: &str) -> bool {
         Path::new(path).is_dir()
     }
 
-    pub fn read(path: String) -> Result<Vec<u8>> {
+    pub fn read(path: &str) -> Result<Vec<u8>> {
         //fs::read_to_string(path)
         fs::read(path)
         //fs::re
@@ -42,11 +42,20 @@ impl Driver {
         chunk
     }
 
-    pub fn read_json( path: String ) -> serde_json::Result<JSON> { // remove!!!
+    pub fn read_json( path: &str) -> Option<JSON> { // remove!!!
         //let file = Driver::create_file("data.json".into(), content).unwrap();
-        let data = Driver::read_to_string(path).unwrap();
+        let data = Driver::read_to_string(path);
+        if data.is_err() {
+            return None;
+            // return Err(data);
+            // return serde_json::Error {};
+        }
 
-        serde_json::from_str(&data)
+        let content = serde_json::from_str(&data.unwrap());
+        if let Ok(content) = content {
+            return content;
+        };
+        None
             //.expect("Can't parse json"); // convert string to json object and panic in case of error
     }
 
@@ -95,7 +104,7 @@ impl Driver {
         Ok(file)
     }
 
-    pub fn create_directory( path: String, open: bool ) -> Option<fs::ReadDir> {
+    pub fn create_directory(path: String, open: bool) -> Option<fs::ReadDir> {
         match fs::create_dir(&path) {
             Ok(_) => {
                 if open {
@@ -107,8 +116,22 @@ impl Driver {
         None
     }
 
-    pub fn open_directory(path: String) -> Result<fs::ReadDir> {
-        fs::read_dir(path)
+    pub fn open_directory(path: String, create: bool) -> Option<fs::ReadDir> {
+        let result = fs::read_dir(&path);
+        if let Ok(dir) = result {
+            return Some(dir);
+        }
+
+        if create {
+            let dir = Driver::create_directory(path, true);
+            return dir;
+            // return Some(dir);
+            // if let Some(dir) = dir {
+            //     return dir;
+            // }
+        }
+
+        None
     }
 
     pub fn open_file(path: String) -> Result<fs::File> {
@@ -127,7 +150,7 @@ impl Driver {
     }
 
     pub fn open_with_options(
-        path: String,
+        path: &str,
         create: bool,
         append: bool,
         read: bool,
@@ -139,5 +162,13 @@ impl Driver {
             .read(read)
             .write(write)
             .open(path)
+    }
+
+    pub fn erase(path: &str) -> bool {
+        fs::remove_file(path).is_ok()
+    }
+
+    pub fn delete_folder(path: &str) -> bool {
+        fs::remove_dir_all(path).is_ok()
     }
 }

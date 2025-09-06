@@ -1,14 +1,52 @@
 [package]
-name = "http"
+name = "bapesh"
 version = "0.1.0"
 edition = "2021"
 
 [dependencies]
-base64 = "0.21.5"
-ring = "0.17.7"
+bapesh_macros = { path = "./bapesh_macros" }
+
+get_if_addrs = "0.5.2"
+
+tokio = { version = "1.6.1", features = ["full"] }
 
 serde = { version = "1.0.193", features = ["derive"] }
 serde_json = "1.0.108"
 
+chrono = "0.4.38"
+ring = "0.17.7" #remove!!!
+dotenv = "0.15.0"
+
 sha-1 = "0.8.0"
 uuid = { version = "1.6.1", features = ["v4"] }
+
+# hyper = { version = "0.14", features = ["stream", "server", "http1", "http2", "tcp", "client"] } #remove!!
+futures-util = { version = "0.3", default-features = false, features = ["sink"] }
+anyhow = "1.0.86"
+tokio-util = "0.7.11"
+futures = { version = "0.3", default-features = false }
+
+#tls
+# tokio-rustls = {version = "0.24"}
+# state = "0.6"
+# indexmap = "2"
+# webpki-roots = "0.22.5"
+
+# rustls = "0.23.26"
+# rustls-pemfile = "2.2.0"
+
+sqlx = { version = "0.8", optional = true, features = ["postgres", "runtime-tokio-rustls"] }
+# axum-server = { version = "0.7", features = ["tls-rustls-no-provider"] }
+
+#telegram
+reqwest = {version = "0.12.5", optional = true} #remove!!!
+teloxide = {version = "0.12.2", optional = true}
+base64 = "0.21.5"
+
+[features]
+default = []
+telegram = ["reqwest", "teloxide"]
+# tls = ["tokio-rustls", "rustls", "rustls-pemfile"]
+db = ["sqlx"]
+
+

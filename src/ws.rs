@@ -1,7 +1,8 @@
-use std::{collections::HashMap, fmt, net::TcpStream, sync::{Arc, Mutex}, io::{Result, Write, Read, BufReader}};
-use crate::{handshake::{Response, Status_Code, Request}, server::{Resources, Check}};
+use std::{collections::HashMap, fmt, sync::{Arc, Mutex}, io::{Result}};
+use crate::{handshake::{Request, Response, Status_Code}, server::{Check, Resources, Service}};
 
 use sha1::Digest;
+use tokio::{io::AsyncReadExt, net::TcpStream};
 
 static WS_MAGIC_STRING : &str = "258EAFA5-E914-47DA-95CA-C5AB0DC85B11";
 static BASE64: &[u8] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
@@ -67,31 +68,31 @@ fn encode_base64(data: &[u8]) -> String {
     String::from_utf8(encoded).unwrap()
 }
 
-pub fn is_websocket_update( request: &Request ) -> bool {
-    if let Some(header) = request.headers.get("Connection") {
-        header == "Upgrade"
-    } else {
-        false
-    }
-}
-
-pub fn update_to_websocket( request: &Request, _: &mut Resources ) -> Response {
-    let key = request.headers.get("Sec-WebSocket-Key").unwrap();
-    println!("websocket key : {key}");
-
-    let hashed_key = hash_key(key);
-
-    let mut headers: HashMap<String, String> = HashMap::new();
-    headers.insert("Connection".into(), "Upgrade".into());
-    headers.insert("Upgrade".into(), "websocket".into());
-    headers.insert("Sec-WebSocket-Accept".into(), hashed_key);
-    
-    Response {
-        status: Status_Code::SwitchingProtocols,
-        headers,
-        body: Vec::new(),
-    }
-}
+// pub fn is_websocket_update( request: &Request ) -> bool {
+//     if let Some(header) = request.headers.get("Connection") {
+//         header == "Upgrade"
+//     } else {
+//         false
+//     }
+// }
+//
+// pub fn update_to_websocket( request: &Request, _: &mut Resources ) -> Response {
+//     let key = request.headers.get("Sec-WebSocket-Key").unwrap();
+//     println!("websocket key : {key}");
+//
+//     let hashed_key = hash_key(key);
+//
+//     let mut headers: HashMap<String, String> = HashMap::new();
+//     headers.insert("Connection".into(), "Upgrade".into());
+//     headers.insert("Upgrade".into(), "websocket".into());
+//     headers.insert("Sec-WebSocket-Accept".into(), hashed_key);
+//     
+//     Response {
+//         status: Status_Code::SwitchingProtocols,
+//         headers,
+//         body: Vec::new(),
+//     }
+// }
 
 
 //////// Protocol
@@ -540,16 +541,64 @@ where
 }
 
 pub struct WebSocket {
-    pub uri: Check,
 }
 
-impl WebSocket {
-    pub fn new( uri: Check ) -> Self {
-        Self {
-            uri,
+impl Service for WebSocket {
+    fn uri(&self, request: &Request) -> bool {
+        if let Some(header) = request.headers.get("Connection") {
+            header == "Upgrade"
+        } else {
+            false
         }
     }
 
+    // async fn serve(&self) {
+    //
+    // }
+
+    // fn respond(request: &Request, resources: Arc<Mutex<Resources>>) -> Response {
+    //     let key = request.headers.get("Sec-WebSocket-Key").unwrap();
+    //     println!("websocket key : {key}");
+    //
+    //     let hashed_key = hash_key(key);
+    //
+    //     let mut headers: HashMap<String, String> = HashMap::new();
+    //     headers.insert("Connection".into(), "Upgrade".into());
+    //     headers.insert("Upgrade".into(), "websocket".into());
+    //     headers.insert("Sec-WebSocket-Accept".into(), hashed_key);
+    //
+    //     Response {
+    //         status: Status_Code::SwitchingProtocols,
+    //         headers,
+    //         body: Vec::new(),
+    //     }
+    // }
+
+    fn handler(&self, stream: &mut TcpStream, resources: Arc<Mutex<Resources>>) {
+        let mut client = accept(stream).unwrap();
+        loop {
+            let message = client.read();
+            // println!("{:?}", msg);
+            // We do not want to send back ping/pong messages.
+
+            // if msg.is_close() {
+            //     println!("close");
+            // }
+            // else if msg.is_empty() {
+            //     println!("open?");
+            // }
+            // else if msg.is_binary() || msg.is_text() {
+            //     // // websocket.send(msg).unwrap();
+            //     //
+            //     // let json : JSON = serde_json::from_str(&msg.to_string()).unwrap();
+            //     // let message_type = Message_Type::from_str(json["#type"].clone().as_str().unwrap()).unwrap();
+            //     // println!("message type is : {:?}", message_type);
+            // }
+        }
+    }
+}
+
+impl WebSocket {
     pub fn read( &self ) -> Result<Message> {
         Ok(Message::Text("hello world".into()))
     }
@@ -564,11 +613,11 @@ struct Connection<'a> {
 }
 
 impl<'a> Connection<'a> {
-    pub fn read( &mut self ) -> Option<Message> {
+    pub async fn read( &mut self ) -> Option<Message> {
 
         let mut buffer = [0_u8; 512];
 
-        self.stream.read(&mut buffer).unwrap();
+        self.stream.read(&mut buffer).await.unwrap();
 
         if buffer.is_empty() {
             return None
@@ -592,9 +641,9 @@ impl<'a> Connection<'a> {
         Some(Message::Text("Hello vasya".to_string()))
     }
 
-    fn read_stream( &mut self, size: u8 ) -> Vec<u8> {
+    async fn read_stream( &mut self, size: u8 ) -> Vec<u8> {
         let mut buffer = [0; 1]; 
-        self.stream.read_exact( &mut buffer ).unwrap();
+        self.stream.read_exact( &mut buffer ).await.unwrap();
         buffer.to_vec()
     }
 }
@@ -629,3 +678,21 @@ pub fn handle_connection( stream: &mut TcpStream, _: Arc<Mutex<Resources>> ) {
         // }
     }
 }
+
+
+    // pub fn ws( &mut self, options: ws::WebSocket ) -> &mut Self { // remove!!!
+    //
+    //     self.add_route( Route {
+    //         method: Method::GET,
+    //         uri: options.uri,
+    //         handler: ws::update_to_websocket
+    //     });
+    //
+    //     self.service( Service {
+    //         uri: options.uri,
+    //         handler: options.handler,
+    //     });
+    //
+    //     self.add_resourse(options);
+    //     self
+    // }

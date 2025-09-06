@@ -1,255 +1,377 @@
-use std::{collections::HashMap, fmt::format, io::Read};
+use sqlx::{pool, Connection, Postgres, Row};
+use crate::json::JSON;
 
-use crate::{driver::Driver, json::JSON};
+pub type StdError = Box<dyn std::error::Error + Send + Sync>;
+pub type Pool = sqlx::Pool<sqlx::Postgres>; 
 
-pub struct Database {
-    name: String,
-    is_realtime: bool,
-    collections: HashMap<String, Collection>,
+pub async fn connect() -> Result<Pool, StdError> {
+    let url = "";
+    let pool = sqlx::postgres::PgPool::connect(url).await?;
+
+    Ok(pool)
 }
 
-impl Database {
-    pub fn new( name: String, is_realtime: bool ) -> Self {
-        let db = Self {
-            name: name.clone(),
-            is_realtime,
-            collections: HashMap::new()
-        };
-        
-        if !is_realtime {
-            Driver::create_directory(format!("./{name}"), true);
-        }
+pub async fn get_sql_type(r#type: &str, pool: &Pool) -> String {
+    let std_type = match r#type {
+        "string" => "TEXT",
+        "int" => "INTEGER",
+        "float" => "REAL",
+        "bool" => "BOOLEAN",
 
-        db
-    }
+        "u8" | "u16" | "i8" | "i16" => "SMALLINT",
+        "u32" | "i32" => "INTEGER",
+        "u64" | "usize" | "i64" | "isize" => "BIGINT",
 
-    pub fn new_collection( &mut self, name: String, schema: Schema ) -> &Collection {
-        let collection = Collection::new( schema );
-        self.collections.insert(name.clone(), collection );
+        "f32" => "REAL",
+        "f64" => "DOUBLE PRECISION",
 
-        if !self.is_realtime {
-            let path = format!("./{}/{}", self.name, name.clone());
-            let directory = Driver::create_directory(path.clone(), true);
-            let mut schema_file = Driver::open_with_options(
-                format!("{path}/schema.json"),
-                true, false, true, true ).unwrap();
+        "Time" => "TIMESTAMP WITH TIME ZONE",
+        // "Time" => "TIMESTAMP WITHOUT TIME ZONE",
+        "Date" => "DATE",
 
-            let mut data = String::new();
-            schema_file.read_to_string(&mut data).unwrap();
-        }
+        // "Vector2" => "Vector2",
+        // "Vector3" => "Vector3",
+        // "Vector4" => "Vector4",
+        // "Color" => "Color", // Assuming Color is a 4-component RGBA color
+        //-- Insert data
+        //INSERT INTO objects (position) VALUES (ROW(10.5, 20.3)::vector2);
 
-        self.collections.get(&name).unwrap()
-        // &collection
-    }
+        "Vector2" => "REAL[2]",
+        "Vector3" => "REAL[3]",
+        "Vector4" => "REAL[4]",
+        "Color" => "SMALLINT[4]", // Assuming Color is a 4-component RGBA color
+        //-- Insert data
+        //INSERT INTO objects (position) VALUES (ARRAY[10.5, 20.3]::REAL[]);
 
-    pub fn get_collection( &mut self, name: String, create: bool ) -> Option<&Collection> {
-       
-        if self.collections.contains_key(&name) {
-            return self.collections.get(&name);
-        }
-        if create {
-            return Some(self.new_collection(name, Schema::new()));
-        }
-        None
-    }
+        _ => "TEXT", // Default to TEXT for unknown types 
+    };
 
-    pub fn get_collection_mut( &mut self, name: String, create: bool ) -> Option<&mut Collection> {
-        
-        if self.collections.contains_key(&name) {
-            return self.collections.get_mut(&name);
-        }
-        if create {
-            self.new_collection(name.clone(), Schema::new());
-            return self.collections.get_mut(&name);
-        }
-        None
-    }
+    // if std_type == "TEXT" {
+    //     let exists = is_custom_type_exists(r#type, pool).await;
+    //     if exists.is_ok() {
+    //         return r#type.to_string(); // If we can't check, return the standard type
+    //     }
+    //     // If it's a reference type, we assume it's a foreign key
+    // }
 
-    pub fn show_dbs() {}
-
-    pub fn show_collections() {}
-
-    pub fn use_db(db: String) {}
+    std_type.to_string() // or whatever type you use for foreign keys
 }
 
-#[derive(Debug)]
-pub struct Property {
-    pub r#default: Option<JSON>,
-    pub r#type: JSON,
-    pub description: JSON,
-    pub custom: Option<HashMap<String, JSON>>,
+pub async fn is_table_exists(name: &str, pool: &sqlx::Pool<sqlx::Postgres>) -> Result<bool, StdError> {
+    let query = "SELECT EXISTS (
+        SELECT FROM information_schema.tables 
+        WHERE table_name = $1
+    )";
+
+    let row = sqlx::query(query)
+        .bind(name)
+        .fetch_one(pool)
+        .await?;
+
+    let exists: bool = row.get(0);
+    Ok(exists)
 }
 
-impl Property {
-    pub fn from_json(json: &JSON) -> Self {
-        let default = if json["default"].is_null() {
-            None
-        } else {
-            Some(json["default"].clone())
-        };
+pub async fn remove_from_table(name: &str, id: i32, pool: &sqlx::Pool<sqlx::Postgres>) -> Result<(), StdError> {
+    let query = &format!("DELETE FROM {} WHERE id = $1", name);
+    sqlx::query(query)
+        .bind(id)
+        .execute(pool)
+        .await?;
+    Ok(())
+}
 
-        Self {
-            default,
-            r#type: json["type"].clone(),
-            description: json["description"].clone(),
-            custom: None,
-        }
+pub async fn get_from_table(name: &str, id: i32, pool: &sqlx::Pool<sqlx::Postgres>) -> Result<Option<JSON>, StdError> {
+    let query = &format!("SELECT * FROM {} WHERE id = $1", name);
+    let row = sqlx::query(query)
+        .bind(id)
+        .fetch_optional(pool)
+        .await?;
+
+
+    if let Some(row) = row {
+        let json: JSON = row.try_get("data")?; // Assuming the column is named 'data'
+        Ok(Some(json))
+    } else {
+        Ok(None)
     }
 }
 
-#[derive(Debug)]
-pub struct Schema {
-    pub parent: Option<String>,
-    pub custom: Option<HashMap<String, Property>>,
-    pub properties: HashMap<String, Property>,
+pub async fn insert_into_table(name: &str, values: &JSON, pool: &sqlx::Pool<sqlx::Postgres>) -> Result<(), StdError> {
+    let (keys, values)= generate_values(values);
+
+    let query = &format!("INSERT INTO {} ({}) VALUES ({})", name, keys, values);
+
+    // Here you would typically bind the values to the query
+    // For simplicity, we are not binding any values in this example
+    sqlx::query(query)
+        .execute(pool)
+        .await?;
+
+    Ok(())
 }
 
-impl Schema {
-    pub fn new() -> Self {
-        Self {
-            parent: None,
-            custom: None,
-            properties: HashMap::new(),
+pub fn generate_values(json: &JSON) -> (String, String) {
+    let mut keys = String::new();
+    let mut values = String::new();
+    if json.is_null() {
+        return (keys, values);
+    }
+
+    if let JSON::Object(obj) = json {
+        for (key, value) in obj.iter() {
+            // let key = if key.starts_with('!') {
+            //     // PRIMARY KEY
+            //     key.trim_start_matches('!').to_string()
+            // } else {
+            //     key.to_string()
+            // };
+
+            let value = value.as_str().unwrap_or("NULL");
+            // result.push_str(&format!("{}: {}, ", key, value));
+
+            keys.push_str(&format!("{}, ", key));
+            values.push_str(&format!("'{}', ", value));
+
+            keys = keys.trim_end_matches(", ").to_string();
+            values = values.trim_end_matches(", ").to_string();
         }
     }
 
-    pub fn from_json(json: JSON) -> Self {
-        let parent = if json["#parent"].is_null() {
-            None
-        } else {
-            Some(json["#parent"].to_string())
-        };
+    (keys, values)
+}
 
-        let custom = if json["#custom"].is_null() {
-            None
-        } else {
-            let entries = json["#custom"].as_object().unwrap();
+pub async fn generate_properties(schema: &JSON, pool: &sqlx::Pool<sqlx::Postgres>) -> String {
+    let mut properties = String::new();
+    if schema.is_null() {
+        return properties;
+    }
 
-            let mut custom_properties: HashMap<String, Property> = HashMap::new();
-            for (key, value) in entries {
-                custom_properties.insert(key.to_string(), Property::from_json(value));
+    if let JSON::Object(obj) = schema {
+        for (key, mut value) in obj.iter() {
+            if value.is_object() {
+                let info = value.as_object().unwrap();
+                value = info.get("type").unwrap_or(value);
+                let description = info.get("description").unwrap_or(&JSON::Null);
+                let default = info.get("default").unwrap_or(&JSON::Null);
             }
-            Some(custom_properties)
-        };
-
-        let mut properties: HashMap<String, Property> = HashMap::new();
-
-        for (key, value) in json.as_object().unwrap() {
-            properties.insert(key.to_string(), Property::from_json(value));
-        }
-
-        Self { parent, custom, properties }
-    }
-}
-
-impl Default for Schema {
-    fn default() -> Self {
-        Self::new()
-    }
-}
-
-pub trait From_Record<T> {
-    fn hydrate( record: &Record ) -> T;
-}
-
-#[derive(Debug)]
-pub struct Record {
-    pub properties: HashMap<String, JSON>
-}
-
-impl Record { // not tested
-    pub fn from_entry( entry: JSON ) -> Self {
-
-        let mut properties = HashMap::new();
-        for property in entry.as_object().unwrap() {
-            properties.insert( property.0.clone(), property.1.clone() );
-        }
-
-        Self { properties }
-    } 
-
-    pub fn from_schema( schema: &Schema ) -> Self {
-        let mut properties = HashMap::new();
-        for entry in schema.properties.iter() {
-            if entry.0 == "#custom" {
-                continue;
-            }
-            let default = match entry.1.default.clone() {
-                Some(default_value) => default_value,
-                None => JSON::Null,
+            let key = if key.starts_with('!') {
+                // PRIMARY KEY
+                key.trim_start_matches('!').to_string()
+            } else {
+                key.to_string()
             };
-            properties.insert(entry.0.clone(), default);
-        } 
 
-        Self {
-            properties
+            let value = value.as_str().unwrap_or("string");
+
+            if value.starts_with('[') {
+                // Array
+                let inner_type = value.trim_start_matches('[').trim_end_matches(']');
+                if inner_type.starts_with('&') {
+                    // Reference type
+                    let table = inner_type.trim_start_matches('&');
+                    properties.push_str(&format!("{} INTEGER[], ", key));
+                    continue;
+                } else if inner_type.contains("::") {
+                    // Reference type with property
+                    let (table, property) = {
+                        let parts: Vec<&str> = inner_type.split("::").collect();
+                        (parts[0], parts[1])
+                    };
+                    let sql_type = "INTEGER"; // must get type from schema
+                    properties.push_str(&format!("{} {}[], ", key, sql_type));
+                    continue;
+                }
+
+                let sql_type = get_sql_type(inner_type, pool).await;
+                properties.push_str(&format!("{} {}[], ", key, sql_type));
+                continue;
+                // array type
+
+            }
+            else if value.starts_with('{') {
+                // Map
+                let inner_types = value.trim_start_matches('{').trim_end_matches('}');
+                if !inner_types.contains(':') {
+                    // Set
+                    let inner_type = inner_types.trim();
+                    let is_ref = inner_type.starts_with('&');
+
+                    let sql_type = get_sql_type(inner_type, pool).await;
+                    properties.push_str(&format!("{} {}[], ", key, sql_type));
+                    continue;
+                }
+                else {
+                    let inner_types: Vec<&str> = inner_types.split(':').collect();
+    
+                    let inner_key = inner_types[0].trim();
+                    let inner_value = inner_types[1].trim();
+                    let is_ref = inner_value.starts_with('&');
+
+                    // Map type
+
+                    // let sql_type = get_sql_type(value);
+
+                    let is_simple_type = inner_value == "string" || inner_value == "int" || inner_value == "float" || inner_value == "bool";
+                    let map_type = if is_simple_type {
+                        format!("{} HSTORE", inner_key)
+                    } else {
+                        // let sql_type = get_sql_type(inner_value);
+                        format!("{} JSONB", inner_key)
+                    };
+                    properties.push_str(&map_type);
+                    continue;
+                }
+            }
+
+            let is_nullable = key.starts_with('?');
+            
+            if value.starts_with('&') {
+                // Reference type
+                let table = value.trim_start_matches('&');
+                properties.push_str(&format!("{} INTEGER REFERENCES {}(id), ", key, table));
+            } else if value.contains("::") {
+                // Reference type
+                // let ref_name = value.trim_start_matches('&');
+                let (table, property) = {
+                    let parts: Vec<&str> = value.split("::").collect();
+                    (parts[0], parts[1])
+                };
+                // let sql_type = get_sql_type(v, pool).await;
+                let sql_type = "INTEGER"; // must get type from schema
+
+                properties.push_str(&format!("{} {} REFERENCES {}({}), ", key, sql_type, table, property));
+            } else {
+                let sql_type = get_sql_type(value, pool).await;
+                properties.push_str(&format!("{} {} {}, ", key, sql_type, if is_nullable { "NULL" } else { "NOT NULL" }));
+            }
         }
     }
+    properties.trim_end_matches(", ").to_string();
+
+    return properties;
 }
 
-#[derive(Debug)]
-pub struct Collection {
-    pub schema: Schema,
-    pub records: HashMap<String,Record>,
+pub async fn create_table(name: &str, schema: &JSON, pool: &sqlx::Pool<sqlx::Postgres>) -> Result<(), StdError> {
+    let properties = generate_properties(schema, pool).await;
+
+    let query = &format!("CREATE TABLE IF NOT EXISTS {} ({})", name, properties);
+
+            // id SERIAL PRIMARY KEY,
+            // name TEXT NOT NULL,
+            // description TEXT,
+            // logo TEXT
+
+    sqlx::query(query)
+        .execute(pool)
+        .await?;
+
+    // sqlx::query(
+    //     "CREATE TABLE IF NOT EXISTS decors (
+    //         id SERIAL PRIMARY KEY,
+    //         name TEXT NOT NULL,
+    //         description TEXT,
+    //         geometry TEXT,
+    //         material TEXT,
+    //         type TEXT,
+    //         prestige_per_hour INTEGER,
+    //         bundle INTEGER REFERENCES bundles(id),
+    //         price NUMERIC(10, 2),
+    //         cover TEXT
+    //     )",
+    // )
+    // .execute(pool)
+    // .await?;
+
+    Ok(())
 }
 
-
-impl Collection {
-    pub fn new( schema: Schema ) -> Self {
-        Self {
-            schema,
-            records: HashMap::new(),
-        }
-    }
-
-    pub fn new_record( &mut self, name: String ) -> Option<&Record> {
-        self.records.insert(name.clone(), Record::from_schema(&self.schema));
-
-        self.records.get(&name)
-    }
-
-    pub fn get_record( &mut self, name: String, create: bool ) -> Option<&Record> {
-        if self.records.contains_key(&name) {
-            return self.records.get(&name);
-        }
-        if create {
-            return self.new_record(name);
-        }
-
-        None
-    }
-
-    pub fn get_record_mut( &mut self, name: String ) -> Option<&mut Record> {
-        self.records.get_mut(&name)
-    }
-
-    pub fn from_json(json: JSON, name: String ) -> Self {
-        let mut schema_path: String = json["struct"].as_str().unwrap()[6..].into();
-        schema_path.remove(schema_path.len() - 1);
-
-        println!("{}", schema_path);
-
-        let schema_data = Driver::read_json(schema_path + ".json").unwrap();
-        let schema = Schema::from_json(schema_data);
-
-        let mut records = HashMap::new();
-
-        let mut index = 0;
-        json["entries"].as_array().unwrap().iter().for_each(|entry| {
-            // records.push(Record::from_entry(entry.clone()));
-            records.insert(index.to_string(), Record::from_entry(entry.clone())); // not tested!!!
-            index += 1;
-        });
-
-        Self { schema, records }
-    }
-
-    pub fn find() {}
-
-    pub fn insert() {}
-
-    pub fn update() {}
-
-    pub fn remove() {}
+pub async fn delete_table(name: &str, pool: &sqlx::Pool<sqlx::Postgres>) -> Result<(), StdError> {
+    let query = &format!("DROP TABLE IF EXISTS {}", name);
+    sqlx::query(query)
+        .execute(pool)
+        .await?;
+    Ok(())
 }
 
+pub async fn create_database(name: &str, pool: &sqlx::Pool<sqlx::Postgres>) -> Result<(), StdError> {
+    let query = &format!("CREATE DATABASE {}", name);
+    sqlx::query(query)
+        .execute(pool)
+        .await?;
+    Ok(())
+}
+
+pub async fn delete_database(name: &str, pool: &sqlx::Pool<sqlx::Postgres>) -> Result<(), StdError> {
+    let query = &format!("DROP DATABASE IF EXISTS {}", name);
+    sqlx::query(query)
+        .execute(pool)
+        .await?;
+    Ok(())
+}
+
+pub async fn is_extension_exists(name: &str, pool: &sqlx::Pool<sqlx::Postgres>) -> Result<bool, StdError> {
+    let query = "SELECT EXISTS (
+        SELECT 1 FROM pg_extension WHERE extname = $1
+    )";
+
+    let row = sqlx::query(query)
+        .bind(name)
+        .fetch_one(pool)
+        .await?;
+
+    let exists: bool = row.get(0);
+    Ok(exists)
+}
+
+pub async fn enable_extension(name: &str, pool: &sqlx::Pool<sqlx::Postgres>) -> Result<(), StdError> {
+    sqlx::query(&format!("CREATE EXTENSION IF NOT EXISTS {}", name))
+        .execute(pool)
+        .await?;
+    Ok(())
+}
+
+pub async fn create_type(name: &str, schema: &JSON, pool: &sqlx::Pool<sqlx::Postgres>) -> Result<(), StdError> {
+    let properties = generate_properties(schema, pool).await;
+
+    let query = &format!("CREATE TYPE IF NOT EXISTS {} AS ({})", name, properties);
+
+    sqlx::query(query)
+        .execute(pool)
+        .await?;
+
+    Ok(())
+}
+
+pub async fn create_enum(name: &str, variants: &[&str], pool: &sqlx::Pool<sqlx::Postgres>) -> Result<(), StdError> {
+    let variants_str = variants.join(", ");
+    let query = &format!("CREATE TYPE IF NOT EXISTS {} AS ENUM ({})", name, variants_str);
+
+    sqlx::query(query)
+        .execute(pool)
+        .await?;
+
+    Ok(())
+}
+
+pub async fn delete_type(name: &str, pool: &sqlx::Pool<sqlx::Postgres>) -> Result<(), StdError> {
+    let query = &format!("DROP TYPE IF EXISTS {}", name);
+    sqlx::query(query)
+        .execute(pool)
+        .await?;
+    Ok(())
+}
+
+pub async fn is_custom_type_exists(name: &str, pool: &sqlx::Pool<sqlx::Postgres>) -> Result<bool, StdError> {
+    let query = "SELECT EXISTS (
+        SELECT 1 FROM pg_type WHERE typname = $1
+    )";
+
+    let row = sqlx::query(query)
+        .bind(name)
+        .fetch_one(pool)
+        .await?;
+
+    let exists: bool = row.get(0);
+    Ok(exists)
+}

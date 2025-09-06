@@ -1,4 +1,9 @@
-use std::{str::{self, FromStr}, net::TcpStream, io::{Read, BufReader}, fmt::{Display, Error}, collections::HashMap};
+use std::{str::{self, FromStr}, fmt::{Display, Error}, collections::HashMap};
+use tokio::{io::AsyncReadExt, net::TcpStream};
+use tokio::io::{AsyncBufReadExt,self, BufReader};
+use tokio_rustls::server::TlsStream;
+// use tokio::io::{AsyncBufRead, AsyncBufReadExt, AsyncWrite, AsyncWriteExt};
+
 use crate::{driver::Driver, json::JSON};
 
 const HTTP_VERSION: &str = "HTTP/1.1";
@@ -52,7 +57,7 @@ impl Status_Code {
             Status_Code::Continue => 100,
             Status_Code::SwitchingProtocols => 101,
             Status_Code::OK => 200,
-            Status_Code::Created => todo!(),
+            Status_Code::Created => 201,
             Status_Code::Accepted => todo!(),
             Status_Code::Non_AuthoritativeInformation => todo!(),
             Status_Code::NoContent => 204,
@@ -67,7 +72,7 @@ impl Status_Code {
             Status_Code::BadRequest => 400,
             Status_Code::Unauthorized => todo!(),
             Status_Code::Forbidden => todo!(),
-            Status_Code::NotFound => todo!(),
+            Status_Code::NotFound => 404,
             Status_Code::MethodNotAllowed => todo!(),
             Status_Code::NotAcceptable => todo!(),
             Status_Code::Conflict => todo!(),
@@ -144,23 +149,35 @@ pub enum Method {
     OTHER(String),
 }
 
+impl TryFrom<&str> for Method {
+    type Error = anyhow::Error;
+
+    fn try_from(value: &str) -> Result<Self, Self::Error> { 
+        Method::from_str(value)
+    }
+}
+
 impl FromStr for Method {
-    type Err = ();
+    type Err = anyhow::Error;
 
     fn from_str(s: &str) -> std::result::Result<Self, Self::Err> {
-        match s {
-            "GET" => Ok(Method::GET),
-            "POST" => Ok(Method::POST),
-            "PUT" => Ok(Method::PUT),
-            "DELETE" => Ok(Method::DELETE),
-            "HEAD" => Ok(Method::HEAD),
-            "OPTIONS" => Ok(Method::OPTIONS),
-            "CONNECT" => Ok(Method::CONNECT),
-            "TRACE" => Ok(Method::TRACE),
-            "PATCH" => Ok(Method::PATCH),
-            _ => Ok(Method::OTHER(s.into())),
-            //_ => ()
-        }
+        let method = match s {
+            "GET" => Method::GET,
+            "POST" => Method::POST,
+            "PUT" => Method::PUT,
+            "DELETE" => Method::DELETE,
+            "HEAD" => Method::HEAD,
+            "OPTIONS" => Method::OPTIONS,
+            "CONNECT" => Method::CONNECT,
+            "TRACE" => Method::TRACE,
+            "PATCH" => Method::PATCH,
+            _ => {
+                // println!("{}",s);
+                Method::OTHER(s.into())
+            }
+        };
+
+        Ok(method)
     }
 }
 
@@ -190,33 +207,177 @@ pub fn header_value_try_into_method( hdr: &String ) -> Option<Method> {
     }
 }
 
+#[derive(Debug)]
 pub struct Request {
     pub method: Method,
     pub uri: String,
+    pub query: Option<HashMap<String, String>>,
     pub headers: HashMap<String, String>,
     pub body: Vec<u8>
 }
 
 impl Request {
-    pub fn new(stream: &TcpStream) -> Self {
+
+    fn truncate_buffer(buffer: &[u8; 2048], new_length: usize) -> &[u8] {
+        &buffer[..new_length.min(buffer.len())]
+    }
+
+ //    pub async fn new(mut stream: impl AsyncBufRead + Unpin) -> anyhow::Result<Request> {
+ //        let mut line_buffer = String::new();
+ //        stream.read_line(&mut line_buffer).await?;
+ //
+ //        let mut parts = line_buffer.split_whitespace();
+ //
+ //        let method: Method = parts
+ //            .next()
+ //            .ok_or(anyhow::anyhow!("missing method"))
+ //            .and_then(TryInto::try_into)?;
+ //
+ //        let path: String = parts
+ //            .next()
+ //            .ok_or(anyhow::anyhow!("missing path"))
+ //            .map(Into::into)?;
+ //
+ //        let mut headers = HashMap::new();
+ //        let mut body = Vec::new();
+ //
+ //        // println!("{}",path);
+ //        //
+ //        // let uri_full: String = status.nth(0).unwrap_or("").into();
+ //        let mut uri_and_query = path.split('?');
+ //        let uri = uri_and_query.next().unwrap().to_string();
+ //        let query_params = uri_and_query.next();
+ //
+ //        let query = Self::parse_query(query_params);
+ //        // println!("{:?} | {}", query, uri);
+ //
+ //        loop {
+ //            line_buffer.clear();
+ //            stream.read_line(&mut line_buffer).await?;
+ //
+ //            // if line_buffer.is_empty() {
+ //            //     println!("next must be body");
+ //            //     line_buffer.clear();
+ //            //     stream.read_line(&mut line_buffer).await?;
+ //            //     println!("body: {}",line_buffer);
+ //            //     break;
+ //            // }
+ //
+ //            if line_buffer.is_empty() || line_buffer == "\n" || line_buffer == "\r\n" {
+ //                // println!("second next must be body");
+ //                // line_buffer.clear();
+ //                // stream.read_line(&mut line_buffer).await?;
+ //                // println!("body: {}",line_buffer);
+ //                break;
+ //            }
+ //
+ //            let mut comps = line_buffer.split(':');
+ //            // println!("{:?}",comps);
+ //            // if comps.clone().count() < 2 {
+ //            //     // let body_value = comps.next().ok_or(anyhow::anyhow!("missing body"))?;
+ //            //     println!("{}", line_buffer);
+ //            //     // body = line_buffer.clone().into();
+ //            // }
+ //            // else {
+ //                let key = comps.next().unwrap();//.ok_or(anyhow::anyhow!("missing header name"))?;
+ //                // let value = comps
+ //                //     .next()
+ //                //     .ok_or(anyhow::anyhow!("missing header value"))?
+ //                //     .trim();
+ //                if let Some(value) = comps.next() {
+ //                    headers.insert(key.to_string(), value.trim().to_string());
+ //                } else {
+ //                    println!("body: {}",key);
+ //                }
+ //
+ //            // }
+ //        }
+ //
+ //        let request = Request {
+ //            method,
+ //            uri,
+ //            headers,
+ //            body,
+ //            query,
+ //        };
+ //        // println!("{}",request);
+ //
+ //        Ok(request)
+ // 
+ //        // let request = String::from_utf8_lossy(buffer);
+ //        //
+ //        // let mut parts = request.split("\r\n");
+ //        //
+ //        // let mut status = parts.nth(0).unwrap().split_whitespace();
+ //        // // println!("{:?}", status);
+ //        // let mut headers = HashMap::new();
+ //        // let mut body = Vec::new();
+ //        //
+ //        // for header in parts {
+ //        //     let mut key_value = header.split(':');
+ //        //     if key_value.clone().count() != 2 {
+ //        //         body = header.into();
+ //        //         continue;
+ //        //     }
+ //        //     headers.insert(
+ //        //         String::from(key_value.nth(0).unwrap().trim()),
+ //        //         String::from(key_value.nth(0).unwrap().trim())
+ //        //     );
+ //        // }
+ //        //
+ //        // if status.clone().count() == 0 {
+ //        //     return None;
+ //        // }
+ //        //
+ //        // let method_str = status.nth(0).unwrap();
+ //        // let mut method = Method::GET;
+ //        // let result = Method::from_str(method_str);
+ //        // if let Ok(result) = result {
+ //        //     method = result;
+ //        // }
+ //        //
+ //        // let uri_full: String = status.nth(0).unwrap_or("").into();
+ //        // let mut uri_and_query = uri_full.split('?');
+ //        // let uri = uri_and_query.next().unwrap().to_string();
+ //        // let query_params = uri_and_query.next();
+ //        //
+ //        // let query = Self::parse_query(query_params);
+ //        // // println!("{:?} | {}", query, uri);
+ //        //
+ //        // // println!("{}", request);
+ //        // Some(Request {
+ //        //     method,
+ //        //     uri,
+ //        //     query,
+ //        //     headers,
+ //        //     body
+ //        // })
+ //    }
+
+    // pub async fn new(mut stream: impl AsyncBufRead + Unpin) -> Option<Request> {
+    // pub async fn new(stream: &mut TcpStream) -> Option<Self> {
+    pub async fn new(stream: &mut TlsStream<TcpStream>) -> Option<Self> {
         // let mut buffer = [0; 8192];
         let mut buffer = [0; 2048];
         // let mut buffer = Vec::new();
 
         // stream.read_exact(&mut buffer).unwrap();
         // stream.read(&mut buffer).unwrap();
-        BufReader::new(stream).read(&mut buffer).unwrap();
+        let read_amount = BufReader::new(stream).read(&mut buffer).await.unwrap();
+
+        let buffer = Request::truncate_buffer(&buffer, read_amount);
 
         // let size = stream.read_to_end(&mut buffer).unwrap();
         // println!("{size}");
         // let mut buffer = [0; 1024];
         // stream.read_to_end(&mut buffer).unwrap();
          
-        let request = String::from_utf8_lossy(&buffer);
+        let request = String::from_utf8_lossy(buffer);
 
         let mut parts = request.split("\r\n");
 
         let mut status = parts.nth(0).unwrap().split_whitespace();
+        // println!("{:?}", status);
         let mut headers = HashMap::new();
         let mut body = Vec::new();
 
@@ -232,12 +393,115 @@ impl Request {
             );
         }
 
-        Request {
-            method: Method::from_str(status.nth(0).unwrap()).unwrap(),
-            uri: status.nth(0).unwrap_or("").into(),
+        if status.clone().count() == 0 {
+            return None;
+        }
+
+        let method_str = status.nth(0).unwrap();
+        let mut method = Method::GET;
+        let result = Method::from_str(method_str);
+        if let Ok(result) = result {
+            method = result;
+        }
+
+        let uri_full: String = status.nth(0).unwrap_or("").into();
+        let mut uri_and_query = uri_full.split('?');
+        let uri = uri_and_query.next().unwrap().to_string();
+        let query_params = uri_and_query.next();
+
+        let query = Self::parse_query(query_params);
+        // println!("{:?} | {}", query, uri);
+
+        // println!("{}", request);
+        Some(Request {
+            method,
+            uri,
+            query,
             headers,
             body
+        })
+    }
+
+    pub async fn new_not_tls(stream: &mut TcpStream) -> Option<Self> {
+        // let mut buffer = [0; 8192];
+        let mut buffer = [0; 2048];
+        // let mut buffer = Vec::new();
+
+        // stream.read_exact(&mut buffer).unwrap();
+        // stream.read(&mut buffer).unwrap();
+        let read_amount = BufReader::new(stream).read(&mut buffer).await.unwrap();
+
+        let buffer = Request::truncate_buffer(&buffer, read_amount);
+
+        // let size = stream.read_to_end(&mut buffer).unwrap();
+        // println!("{size}");
+        // let mut buffer = [0; 1024];
+        // stream.read_to_end(&mut buffer).unwrap();
+         
+        let request = String::from_utf8_lossy(buffer);
+
+        let mut parts = request.split("\r\n");
+
+        let mut status = parts.nth(0).unwrap().split_whitespace();
+        // println!("{:?}", status);
+        let mut headers = HashMap::new();
+        let mut body = Vec::new();
+
+        for header in parts {
+            let mut key_value = header.split(':');
+            if key_value.clone().count() != 2 {
+                body = header.into();
+                continue;
+            }
+            headers.insert(
+                String::from(key_value.nth(0).unwrap().trim()),
+                String::from(key_value.nth(0).unwrap().trim())
+            );
         }
+
+        if status.clone().count() == 0 {
+            return None;
+        }
+
+        let method_str = status.nth(0).unwrap();
+        let mut method = Method::GET;
+        let result = Method::from_str(method_str);
+        if let Ok(result) = result {
+            method = result;
+        }
+
+        let uri_full: String = status.nth(0).unwrap_or("").into();
+        let mut uri_and_query = uri_full.split('?');
+        let uri = uri_and_query.next().unwrap().to_string();
+        let query_params = uri_and_query.next();
+
+        let query = Self::parse_query(query_params);
+        // println!("{:?} | {}", query, uri);
+
+        // println!("{}", request);
+        Some(Request {
+            method,
+            uri,
+            query,
+            headers,
+            body
+        })
+    }
+
+    fn parse_query(query_params: Option<&str>) -> Option<HashMap<String, String>> {
+        if let Some(query_params) = query_params {
+            let mut query = HashMap::new();
+            let params = query_params.split('&');
+            for param in params.into_iter() {
+                let mut key_value = param.split('=');
+                let key = key_value.next().unwrap().to_string();
+                let value = key_value.next().unwrap().to_string();
+                query.insert(key,value);
+            }
+            return Some(query);
+        }
+
+        None
     }
 }
 
@@ -265,6 +529,23 @@ pub struct Response {
 }
 
 impl Response {
+    // pub async fn write<O: AsyncWrite + Unpin>(mut self, stream: &mut O) -> anyhow::Result<()> {
+    //     let bytes = self.status_and_headers().into_bytes();
+    //
+    //     stream.write_all(&bytes).await?;
+    //
+    //     tokio::io::copy(&mut self.data, stream).await?;
+    //
+    //     Ok(())
+    // }
+
+    pub fn from_status(status: Status_Code) -> Response {
+        Self {
+            status,
+            headers: HashMap::new(),
+            body: Vec::new()
+        }
+    }
     pub fn new() -> Self {
         Self { 
             status: Status_Code::OK, 
@@ -272,7 +553,19 @@ impl Response {
             body: Vec::new()
         }
     }
-    
+
+    pub fn not_ok(content: &str) -> Self {
+        let content_type = Response::get_mime("text").into();
+        let mut headers: HashMap<String, String> = HashMap::new();
+        headers.insert("Content-Type".into(), content_type);
+        headers.insert("Content-Length".into(), content.len().to_string());
+        Self { 
+            status: Status_Code::BadRequest, 
+            headers: HashMap::new(),
+            body: Vec::new()
+        }
+    }
+ 
     pub fn text( content: String ) -> Response {
         let content_type = Response::get_mime("text").into();
         let mut headers: HashMap<String, String> = HashMap::new();
@@ -285,7 +578,7 @@ impl Response {
         }
     }
 
-    pub fn json( content: JSON ) -> Response {
+    pub fn json(content: &JSON) -> Response {
         let content_type = Response::get_mime("json").into();
         let bytes = content.to_string().as_bytes().to_vec();
 
@@ -299,7 +592,7 @@ impl Response {
         }
     }
 
-    pub fn html( content: Vec<u8> ) -> Response {
+    pub fn html(content: Vec<u8>) -> Response {
         let content_type = Response::get_mime("html").into();
         let mut headers: HashMap<String, String> = HashMap::new();
         headers.insert("Content-Type".into(), content_type);
@@ -319,8 +612,8 @@ impl Response {
             "png" => "image/png",
             "webp" => "image/webp",
             "jpg" => "image/jpeg",
-            "json" => "text/json",
-            "js" => "text/javascript",
+            "json" => "application/json",
+            "js" => "application/javascript",
             "wasm" => "application/wasm",
             _ => "undefined"
         }        
@@ -353,17 +646,18 @@ impl Response {
                 // println!("path: {} | {}", path, error );
                 //"NotFound".into()
 
-                let len = path.len() - 3;
-                let path = path[0..len].to_string();// .nth(0).unwrap().to_string();
-                //println!("directory: {}", path );
-
-                if Driver::is_directory(&path) {
-                    let new_path = format!("{}{}", path, "/main.js" );
-                    //println!("new path: {}", new_path );
-                    return Response::file(new_path);
-                }
-                
-                Response::new()
+                // let len = path.len() - 3;
+                // let path = path[0..len].to_string();// .nth(0).unwrap().to_string();
+                // //println!("directory: {}", path );
+                //
+                // if Driver::is_directory(&path) {
+                //     let new_path = format!("{}{}", path, "/main.js" );
+                //     //println!("new path: {}", new_path );
+                //     return Response::file(new_path);
+                // }
+                let mut response = Response::new();    
+                response.set_status(Status_Code::NotFound);
+                response
             }
         }
     }
@@ -432,7 +726,7 @@ impl From<String> for Response {
 
 impl From<JSON> for Response {
     fn from(value: JSON) -> Self {
-        Response::json( value )
+        Response::json(&value)
     } 
 }
 
