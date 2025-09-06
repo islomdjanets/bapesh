@@ -1,12 +1,18 @@
-use sqlx::{pool, Connection, Postgres, Row};
+use sqlx::{pool, postgres::PgPoolOptions, Connection, Postgres, Row};
 use crate::json::JSON;
 
 pub type StdError = Box<dyn std::error::Error + Send + Sync>;
 pub type Pool = sqlx::Pool<sqlx::Postgres>; 
 
 pub async fn connect() -> Result<Pool, StdError> {
-    let url = "";
-    let pool = sqlx::postgres::PgPool::connect(url).await?;
+    // let url = "";
+    // let pool = sqlx::postgres::PgPool::connect(url).await?;
+
+    let pool = PgPoolOptions::new()
+        .max_connections(5)
+        .connect(&std::env::var("DATABASE_URL").unwrap())
+        .await
+        .unwrap();
 
     Ok(pool)
 }
