@@ -268,7 +268,7 @@ pub async fn generate_properties(schema: &JSON, pool: &sqlx::Pool<sqlx::Postgres
             }
         }
     }
-    // properties.trim_end_matches(", ").to_string();
+    properties = properties.trim_end_matches(", ").to_string();
 
     return properties;
 }
