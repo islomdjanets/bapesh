@@ -31,9 +31,10 @@ pub async fn get_sql_type(r#type: &str, pool: &Pool) -> String {
         "f32" => "REAL",
         "f64" => "DOUBLE PRECISION",
 
-        "Time" => "TIMESTAMP WITH TIME ZONE",
-        // "Time" => "TIMESTAMP WITHOUT TIME ZONE",
-        "Date" => "DATE",
+        "Timestamp" | "timestamp" => "TIMESTAMP WITH TIME ZONE",
+        "DateTime" | "datetime" => "TIMESTAMP WITHOUT TIME ZONE",
+        "Date" | "date" => "DATE",
+        "Time" | "time" => "TIME",
 
         // "Vector2" => "Vector2",
         // "Vector3" => "Vector3",
@@ -42,10 +43,10 @@ pub async fn get_sql_type(r#type: &str, pool: &Pool) -> String {
         //-- Insert data
         //INSERT INTO objects (position) VALUES (ROW(10.5, 20.3)::vector2);
 
-        "Vector2" => "REAL[2]",
-        "Vector3" => "REAL[3]",
-        "Vector4" => "REAL[4]",
-        "Color" => "SMALLINT[4]", // Assuming Color is a 4-component RGBA color
+        "Vector2" | "vector2" => "REAL[2]",
+        "Vector3" | "vector3" => "REAL[3]",
+        "Vector4" | "vector4" => "REAL[4]",
+        "Color" | "color" => "SMALLINT[4]", // Assuming Color is a 4-component RGBA color
         //-- Insert data
         //INSERT INTO objects (position) VALUES (ARRAY[10.5, 20.3]::REAL[]);
 
@@ -104,7 +105,7 @@ pub async fn get_from_table(name: &str, id: i32, pool: &sqlx::Pool<sqlx::Postgre
 }
 
 pub async fn insert_into_table(name: &str, values: &JSON, pool: &sqlx::Pool<sqlx::Postgres>) -> Result<(), StdError> {
-    let (keys, values)= generate_values(values);
+    let (keys, values) = generate_values(values);
 
     let query = &format!("INSERT INTO {} ({}) VALUES ({})", name, keys, values);
 
@@ -179,11 +180,12 @@ pub async fn generate_properties(schema: &JSON, pool: &sqlx::Pool<sqlx::Postgres
 
             if value.starts_with('[') {
                 // Array
+                let default_type = "BIGINT"; // Default type for references
                 let inner_type = value.trim_start_matches('[').trim_end_matches(']');
                 if inner_type.starts_with('&') {
                     // Reference type
                     let table = inner_type.trim_start_matches('&');
-                    properties.push_str(&format!("{} INTEGER[], ", key));
+                    properties.push_str(&format!("{} {}[], ", key, default_type));
                     continue;
                 } else if inner_type.contains("::") {
                     // Reference type with property
@@ -191,7 +193,7 @@ pub async fn generate_properties(schema: &JSON, pool: &sqlx::Pool<sqlx::Postgres
                         let parts: Vec<&str> = inner_type.split("::").collect();
                         (parts[0], parts[1])
                     };
-                    let sql_type = "INTEGER"; // must get type from schema
+                    let sql_type = default_type; // must get type from schema
                     properties.push_str(&format!("{} {}[], ", key, sql_type));
                     continue;
                 }
@@ -271,6 +273,17 @@ pub async fn generate_properties(schema: &JSON, pool: &sqlx::Pool<sqlx::Postgres
 }
 
 pub async fn create_table(name: &str, schema: &JSON, pool: &sqlx::Pool<sqlx::Postgres>) -> Result<(), StdError> {
+    let properties = generate_properties(schema, pool).await;
+    let query = &format!("CREATE TABLE {} ({})", name, properties);
+
+    sqlx::query(query)
+        .execute(pool)
+        .await?;
+
+    Ok(())
+}
+
+pub async fn create_table_if_not_exists(name: &str, schema: &JSON, pool: &sqlx::Pool<sqlx::Postgres>) -> Result<(), StdError> {
     let properties = generate_properties(schema, pool).await;
 
     let query = &format!("CREATE TABLE IF NOT EXISTS {} ({})", name, properties);
