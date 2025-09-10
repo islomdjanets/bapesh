@@ -178,9 +178,9 @@ pub async fn generate_properties(schema: &JSON, pool: &sqlx::Pool<sqlx::Postgres
 
             let value = value.as_str().unwrap_or("string");
 
+            let default_type = "BIGINT"; // Default type for references
             if value.starts_with('[') {
                 // Array
-                let default_type = "BIGINT"; // Default type for references
                 let inner_type = value.trim_start_matches('[').trim_end_matches(']');
                 if inner_type.starts_with('&') {
                     // Reference type
@@ -249,7 +249,8 @@ pub async fn generate_properties(schema: &JSON, pool: &sqlx::Pool<sqlx::Postgres
             if value.starts_with('&') {
                 // Reference type
                 let table = value.trim_start_matches('&');
-                properties.push_str(&format!("{} INTEGER REFERENCES {}(id), ", key, table));
+                let sql_type = default_type; // must get type from schema
+                properties.push_str(&format!("{} {} REFERENCES {}(id), ", key, sql_type, table));
             } else if value.contains("::") {
                 // Reference type
                 // let ref_name = value.trim_start_matches('&');
@@ -258,7 +259,7 @@ pub async fn generate_properties(schema: &JSON, pool: &sqlx::Pool<sqlx::Postgres
                     (parts[0], parts[1])
                 };
                 // let sql_type = get_sql_type(v, pool).await;
-                let sql_type = "INTEGER"; // must get type from schema
+                let sql_type = default_type; // must get type from schema
 
                 properties.push_str(&format!("{} {} REFERENCES {}({}), ", key, sql_type, table, property));
             } else {
