@@ -265,7 +265,7 @@ pub async fn generate_properties(schema: &JSON, pool: &sqlx::Pool<sqlx::Postgres
             } else {
                 let sql_type = get_sql_type(value, pool).await;
                 let default_value = get_default_value(&sql_type);
-                properties.push_str(&format!("{} {} {} {} {}, ", key, sql_type, default_value, if is_nullable { "" } else { "NOT NULL" }, if is_primary_key { "PRIMARY KEY" } else { "" }));
+                properties.push_str(&format!("{} {} DEFAULT {} {} {}, ", key, sql_type, default_value, if is_nullable { "" } else { "NOT NULL" }, if is_primary_key { "PRIMARY KEY" } else { "" }));
             }
         }
     }
