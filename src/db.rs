@@ -157,7 +157,7 @@ pub async fn generate_properties(schema: &JSON, pool: &sqlx::Pool<sqlx::Postgres
     if let JSON::Object(obj) = schema {
         for (key, mut value) in obj.iter() {
 
-            println!("Processing key: {}, value: {:?}", key, value);
+            // println!("Processing key: {}, value: {:?}", key, value);
 
             if value.is_object() {
                 let info = value.as_object().unwrap();
@@ -165,7 +165,7 @@ pub async fn generate_properties(schema: &JSON, pool: &sqlx::Pool<sqlx::Postgres
                 let description = info.get("description").unwrap_or(&JSON::Null);
                 let default = info.get("default").unwrap_or(&JSON::Null);
 
-                println!("Value is an object. Type: {:?}", value);
+                // println!("Value is an object. Type: {:?}", value);
             }
             let mut is_primary_key = false;
             let key = if key.starts_with('!') {
@@ -206,14 +206,14 @@ pub async fn generate_properties(schema: &JSON, pool: &sqlx::Pool<sqlx::Postgres
             }
             else if value.starts_with('{') {
                 // Map
-                println!("Value is a Map or Set: {}", value);
+                // println!("Value is a Map or Set: {}", value);
                 let inner_types = value.trim_start_matches('{').trim_end_matches('}');
                 if !inner_types.contains(',') {
                     // Set
                     let inner_type = inner_types.trim();
                     let is_ref = inner_type.starts_with('&');
 
-                    println!("Set: {}", inner_type);
+                    // println!("Set: {}", inner_type);
 
                     let sql_type = get_sql_type(inner_type, pool).await;
                     properties.push_str(&format!("{} {}[], ", key, sql_type));
@@ -226,7 +226,7 @@ pub async fn generate_properties(schema: &JSON, pool: &sqlx::Pool<sqlx::Postgres
                     let inner_value = inner_types[1].trim();
                     let is_ref = inner_value.starts_with('&');
 
-                    println!("Map: {} , {}", inner_key, inner_value);
+                    // println!("Map: {} , {}", inner_key, inner_value);
 
                     // Map type
 
@@ -268,7 +268,7 @@ pub async fn generate_properties(schema: &JSON, pool: &sqlx::Pool<sqlx::Postgres
             }
         }
     }
-    properties.trim_end_matches(", ").to_string();
+    // properties.trim_end_matches(", ").to_string();
 
     return properties;
 }
