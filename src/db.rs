@@ -79,7 +79,7 @@ pub async fn is_table_exists(name: &str, pool: &sqlx::Pool<sqlx::Postgres>) -> R
     Ok(exists)
 }
 
-pub async fn remove_from_table(name: &str, id: i32, pool: &sqlx::Pool<sqlx::Postgres>) -> Result<(), StdError> {
+pub async fn remove_from_table(name: &str, id: i64, pool: &sqlx::Pool<sqlx::Postgres>) -> Result<(), StdError> {
     let query = &format!("DELETE FROM {} WHERE id = $1", name);
     sqlx::query(query)
         .bind(id)
@@ -88,7 +88,7 @@ pub async fn remove_from_table(name: &str, id: i32, pool: &sqlx::Pool<sqlx::Post
     Ok(())
 }
 
-pub async fn get_from_table(name: &str, id: i32, pool: &sqlx::Pool<sqlx::Postgres>) -> Result<Option<JSON>, StdError> {
+pub async fn get_from_table(name: &str, id: i64, pool: &sqlx::Pool<sqlx::Postgres>) -> Result<Option<JSON>, StdError> {
     let query = &format!("SELECT * FROM {} WHERE id = $1", name);
     let row = sqlx::query(query)
         .bind(id)
