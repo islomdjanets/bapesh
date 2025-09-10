@@ -274,6 +274,8 @@ pub async fn generate_properties(schema: &JSON, pool: &sqlx::Pool<sqlx::Postgres
 
 pub async fn create_table(name: &str, schema: &JSON, pool: &sqlx::Pool<sqlx::Postgres>) -> Result<(), StdError> {
     let properties = generate_properties(schema, pool).await;
+    println!("Properties: {}", properties);
+
     let query = &format!("CREATE TABLE {} ({})", name, properties);
 
     sqlx::query(query)
