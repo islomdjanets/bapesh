@@ -185,7 +185,7 @@ pub async fn generate_properties(schema: &JSON, pool: &sqlx::Pool<sqlx::Postgres
                 if inner_type.starts_with('&') {
                     // Reference type
                     let table = inner_type.trim_start_matches('&');
-                    properties.push_str(&format!("{} {}[], ", key, default_type));
+                    properties.push_str(&format!("{} {}[] DEFAULT '{}', ", key, default_type));
                     continue;
                 } else if inner_type.contains("::") {
                     // Reference type with property
@@ -194,12 +194,12 @@ pub async fn generate_properties(schema: &JSON, pool: &sqlx::Pool<sqlx::Postgres
                         (parts[0], parts[1])
                     };
                     let sql_type = default_type; // must get type from schema
-                    properties.push_str(&format!("{} {}[], ", key, sql_type));
+                    properties.push_str(&format!("{} {}[] DEFAULT '{}', ", key, sql_type));
                     continue;
                 }
 
                 let sql_type = get_sql_type(inner_type, pool).await;
-                properties.push_str(&format!("{} {}[], ", key, sql_type));
+                properties.push_str(&format!("{} {}[] DEFAULT '{}', ", key, sql_type));
                 continue;
                 // array type
 
@@ -216,7 +216,7 @@ pub async fn generate_properties(schema: &JSON, pool: &sqlx::Pool<sqlx::Postgres
                     // println!("Set: {}", inner_type);
 
                     let sql_type = get_sql_type(inner_type, pool).await;
-                    properties.push_str(&format!("{} {}[], ", key, sql_type));
+                    properties.push_str(&format!("{} {}[] DEFAULT '{}', ", key, sql_type));
                     continue;
                 }
                 else {
@@ -234,10 +234,10 @@ pub async fn generate_properties(schema: &JSON, pool: &sqlx::Pool<sqlx::Postgres
 
                     let is_simple_type = inner_value == "string" || inner_value == "int" || inner_value == "float" || inner_value == "bool";
                     let map_type = if is_simple_type {
-                        format!("{} HSTORE, ", key)
+                        format!("{} HSTORE DEFAULT ''::HSTORE, ", key)
                     } else {
                         // let sql_type = get_sql_type(inner_value);
-                        format!("{} JSONB, ", key)
+                        format!("{} JSONB DEFAULT '{}'::JSONB, ", key)
                     };
                     properties.push_str(&map_type);
                     continue;
@@ -264,13 +264,27 @@ pub async fn generate_properties(schema: &JSON, pool: &sqlx::Pool<sqlx::Postgres
                 properties.push_str(&format!("{} {} REFERENCES {}({}), ", key, sql_type, table, property));
             } else {
                 let sql_type = get_sql_type(value, pool).await;
-                properties.push_str(&format!("{} {} {} {}, ", key, sql_type, if is_nullable { "" } else { "NOT NULL" }, if is_primary_key { "PRIMARY KEY" } else { "" }));
+                let default_value = get_default_value(&sql_type);
+                properties.push_str(&format!("{} {} {} {} {}, ", key, sql_type, default_value, if is_nullable { "" } else { "NOT NULL" }, if is_primary_key { "PRIMARY KEY" } else { "" }));
             }
         }
     }
     properties = properties.trim_end_matches(", ").to_string();
 
     return properties;
+}
+
+pub fn get_default_value(r#type: &str) -> String {
+    match r#type {
+        "string" => "''",
+        "int" | "u8" | "u16" | "i8" | "i16" | "u32" | "i32" | "u64" | "usize" | "i64" | "isize" => "0",
+        "float" | "f32" | "f64" => "0.0",
+        "bool" => "FALSE",
+        "TIMESTAMP" => "CURRENT_TIMESTAMP",
+        "DATE" => "CURRENT_DATE",
+        "TIME" => "CURRENT_TIME",
+        _ => "NULL", // Default to NULL for unknown types
+    }.to_string()
 }
 
 pub async fn create_table(name: &str, schema: &JSON, pool: &sqlx::Pool<sqlx::Postgres>) -> Result<(), StdError> {
