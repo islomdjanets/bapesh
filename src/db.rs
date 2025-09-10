@@ -155,14 +155,21 @@ pub async fn generate_properties(schema: &JSON, pool: &sqlx::Pool<sqlx::Postgres
 
     if let JSON::Object(obj) = schema {
         for (key, mut value) in obj.iter() {
+
+            println!("Processing key: {}, value: {:?}", key, value);
+
             if value.is_object() {
                 let info = value.as_object().unwrap();
                 value = info.get("type").unwrap_or(value);
                 let description = info.get("description").unwrap_or(&JSON::Null);
                 let default = info.get("default").unwrap_or(&JSON::Null);
+
+                println!("Value is an object. Type: {:?}", value);
             }
+            let mut is_primary_key = false;
             let key = if key.starts_with('!') {
                 // PRIMARY KEY
+                is_primary_key = true;
                 key.trim_start_matches('!').to_string()
             } else {
                 key.to_string()
@@ -249,7 +256,7 @@ pub async fn generate_properties(schema: &JSON, pool: &sqlx::Pool<sqlx::Postgres
                 properties.push_str(&format!("{} {} REFERENCES {}({}), ", key, sql_type, table, property));
             } else {
                 let sql_type = get_sql_type(value, pool).await;
-                properties.push_str(&format!("{} {} {}, ", key, sql_type, if is_nullable { "NULL" } else { "NOT NULL" }));
+                properties.push_str(&format!("{} {} {} {}, ", key, sql_type, if is_nullable { "NULL" } else { "NOT NULL" }, if is_primary_key { "PRIMARY KEY" } else { "" }));
             }
         }
     }
