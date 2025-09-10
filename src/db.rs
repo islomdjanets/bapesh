@@ -185,7 +185,7 @@ pub async fn generate_properties(schema: &JSON, pool: &sqlx::Pool<sqlx::Postgres
                 if inner_type.starts_with('&') {
                     // Reference type
                     let table = inner_type.trim_start_matches('&');
-                    properties.push_str(&format!("{} {}[] DEFAULT '{}', ", key, default_type));
+                    properties.push_str(&format!("{} {}[] DEFAULT '{{}}', ", key, default_type));
                     continue;
                 } else if inner_type.contains("::") {
                     // Reference type with property
@@ -194,12 +194,12 @@ pub async fn generate_properties(schema: &JSON, pool: &sqlx::Pool<sqlx::Postgres
                         (parts[0], parts[1])
                     };
                     let sql_type = default_type; // must get type from schema
-                    properties.push_str(&format!("{} {}[] DEFAULT '{}', ", key, sql_type));
+                    properties.push_str(&format!("{} {}[] DEFAULT '{{}}', ", key, sql_type));
                     continue;
                 }
 
                 let sql_type = get_sql_type(inner_type, pool).await;
-                properties.push_str(&format!("{} {}[] DEFAULT '{}', ", key, sql_type));
+                properties.push_str(&format!("{} {}[] DEFAULT '{{}}', ", key, sql_type));
                 continue;
                 // array type
 
@@ -216,7 +216,7 @@ pub async fn generate_properties(schema: &JSON, pool: &sqlx::Pool<sqlx::Postgres
                     // println!("Set: {}", inner_type);
 
                     let sql_type = get_sql_type(inner_type, pool).await;
-                    properties.push_str(&format!("{} {}[] DEFAULT '{}', ", key, sql_type));
+                    properties.push_str(&format!("{} {}[] DEFAULT '{{}}', ", key, sql_type));
                     continue;
                 }
                 else {
