@@ -237,7 +237,7 @@ pub async fn generate_properties(schema: &JSON, pool: &sqlx::Pool<sqlx::Postgres
                         format!("{} HSTORE DEFAULT ''::HSTORE, ", key)
                     } else {
                         // let sql_type = get_sql_type(inner_value);
-                        format!("{} JSONB DEFAULT '{}'::JSONB, ", key)
+                        format!("{} JSONB DEFAULT '{{}}'::JSONB, ", key)
                     };
                     properties.push_str(&map_type);
                     continue;
