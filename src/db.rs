@@ -277,6 +277,7 @@ pub async fn create_table(name: &str, schema: &JSON, pool: &sqlx::Pool<sqlx::Pos
     println!("Properties: {}", properties);
 
     let query = &format!("CREATE TABLE {} ({})", name, properties);
+    println!("Create table query: {}", query);
 
     sqlx::query(query)
         .execute(pool)
