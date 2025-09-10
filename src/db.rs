@@ -232,10 +232,10 @@ pub async fn generate_properties(schema: &JSON, pool: &sqlx::Pool<sqlx::Postgres
 
                     let is_simple_type = inner_value == "string" || inner_value == "int" || inner_value == "float" || inner_value == "bool";
                     let map_type = if is_simple_type {
-                        format!("{} HSTORE", inner_key)
+                        format!("{} HSTORE, ", key)
                     } else {
                         // let sql_type = get_sql_type(inner_value);
-                        format!("{} JSONB", inner_key)
+                        format!("{} JSONB, ", key)
                     };
                     properties.push_str(&map_type);
                     continue;
