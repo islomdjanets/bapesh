@@ -250,7 +250,7 @@ pub async fn generate_properties(schema: &JSON, pool: &sqlx::Pool<sqlx::Postgres
                 // Reference type
                 let table = value.trim_start_matches('&');
                 let sql_type = default_type; // must get type from schema
-                properties.push_str(&format!("{} {} REFERENCES {}(id), ", key, sql_type, table));
+                properties.push_str(&format!("{} {} REFERENCES {}(id) {}, ", key, sql_type, table, if is_nullable { "" } else { "NOT NULL" }));
             } else if value.contains("::") {
                 // Reference type
                 // let ref_name = value.trim_start_matches('&');
@@ -264,7 +264,7 @@ pub async fn generate_properties(schema: &JSON, pool: &sqlx::Pool<sqlx::Postgres
                 properties.push_str(&format!("{} {} REFERENCES {}({}), ", key, sql_type, table, property));
             } else {
                 let sql_type = get_sql_type(value, pool).await;
-                properties.push_str(&format!("{} {} {} {}, ", key, sql_type, if is_nullable { "NULL" } else { "NOT NULL" }, if is_primary_key { "PRIMARY KEY" } else { "" }));
+                properties.push_str(&format!("{} {} {} {}, ", key, sql_type, if is_nullable { "" } else { "NOT NULL" }, if is_primary_key { "PRIMARY KEY" } else { "" }));
             }
         }
     }
