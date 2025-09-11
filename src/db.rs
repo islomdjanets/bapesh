@@ -282,7 +282,17 @@ pub fn generate_values(json: &JSON) -> (String, String) {
             // result.push_str(&format!("{}: {}, ", key, value));
 
             keys.push_str(&format!("{}, ", key));
-            values.push_str(&format!("{}, ", value));
+
+            if value.is_string() {
+                let s = value.as_str().unwrap_or("");
+                values.push_str(&format!("'{}', ", s.replace("'", "''"))); // Escape single quotes
+            } else if value.is_null() {
+                values.push_str("NULL, ");
+            } else {
+                values.push_str(&format!("{}, ", value));
+            }
+
+            // values.push_str(&format!("{}, ", value));
 
         }
         keys = keys.trim_end_matches(", ").to_string();
