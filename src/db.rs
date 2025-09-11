@@ -1,4 +1,5 @@
 use sqlx::{pool, postgres::PgPoolOptions, Connection, Postgres, Row};
+use sqlx::Column;
 use crate::json::JSON;
 
 pub type StdError = Box<dyn std::error::Error + Send + Sync>;
@@ -97,8 +98,23 @@ pub async fn get_from_table(name: &str, id: i64, pool: &sqlx::Pool<sqlx::Postgre
 
 
     if let Some(row) = row {
-        let json: JSON = row.try_get("data")?; // Assuming the column is named 'data'
-        Ok(Some(json))
+        // let json: JSON = row.try_get("data")?; // Assuming the column is named 'data'
+        // Ok(Some(json))
+
+        println!("Row: {:?}", row);
+        // get values from row
+        let mut obj = serde_json::Map::new();
+        for column in row.columns() {
+            let col_name = column.name();
+            let value: Result<JSON, _> = row.try_get(col_name);
+            if let Ok(value) = value {
+                obj.insert(col_name.to_string(), value);
+            } else {
+                obj.insert(col_name.to_string(), JSON::Null);
+            }
+        }
+        println!("values: {:?}", obj);
+        Ok(Some(JSON::Object(obj)))
     } else {
         Ok(None)
     }
@@ -138,7 +154,7 @@ pub fn generate_values(json: &JSON) -> (String, String) {
             //     key.to_string()
             // };
 
-            println!("Processing key: {}, value: {:?}", key, value);
+            // println!("Processing key: {}, value: {:?}", key, value);
             // let value = value.as_str().unwrap_or("NULL");
             // result.push_str(&format!("{}: {}, ", key, value));
 
