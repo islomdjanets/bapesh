@@ -256,9 +256,15 @@ pub async fn insert_into_table(name: &str, values: &JSON, pool: &sqlx::Pool<sqlx
 
     if result.is_err() {
         println!("Error inserting into table: {:?}", result.as_ref().err());
+        return result.map_err(|e| Box::new(e) as StdError);
     }
 
-    result.map_err(|e| Box::new(e) as StdError)
+    let result = result.unwrap();
+
+    println!("Rows affected: {}", result.rows_affected());
+
+    Ok(result)
+    // result.map_err(|e| Box::new(e) as StdError)
 }
 
 pub fn generate_values(json: &JSON) -> (String, String) {
