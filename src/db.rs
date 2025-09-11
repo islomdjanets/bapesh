@@ -277,6 +277,7 @@ pub async fn generate_properties(schema: &JSON, pool: &sqlx::Pool<sqlx::Postgres
 }
 
 pub fn get_default_value(r#type: &str) -> String {
+    println!("Getting default value for type: {}", r#type);
     match r#type {
         "TEXT" => "''",
         "BIGINT" | "INTEGER" | "int" | "u8" | "u16" | "i8" | "i16" | "u32" | "i32" | "u64" | "usize" | "i64" | "isize" => "0",
