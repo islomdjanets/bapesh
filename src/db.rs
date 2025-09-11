@@ -549,3 +549,19 @@ pub async fn is_custom_type_exists(name: &str, pool: &sqlx::Pool<sqlx::Postgres>
     let exists: bool = row.get(0);
     Ok(exists)
 }
+
+pub async fn get_tables(pool: &sqlx::Pool<sqlx::Postgres>) -> Result<Vec<JSON>, StdError> {
+    let query = "SELECT table_name FROM information_schema.tables WHERE table_schema = 'public'";
+
+    let rows = sqlx::query(query)
+        .fetch_all(pool)
+        .await?;
+
+    let mut tables = Vec::new();
+    for row in rows {
+        let table_name: String = row.get("table_name");
+        tables.push(JSON::String(table_name));
+    }
+
+    Ok(tables)
+}
