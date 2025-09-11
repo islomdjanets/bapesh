@@ -246,6 +246,7 @@ pub async fn insert_into_table(name: &str, values: &JSON, pool: &sqlx::Pool<sqlx
     println!("Values: {}", values);
 
     let query = &format!("INSERT INTO {} ({}) VALUES ({})", name, keys, values);
+    println!("Insert query: {}", query);
 
     // Here you would typically bind the values to the query
     // For simplicity, we are not binding any values in this example
