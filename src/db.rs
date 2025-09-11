@@ -1,3 +1,5 @@
+use std::collections::HashMap;
+
 use sqlx::{pool, postgres::PgPoolOptions, Connection, Postgres, Row};
 use sqlx::Column;
 use crate::json::JSON;
@@ -103,18 +105,24 @@ pub async fn get_from_table(name: &str, id: i64, pool: &sqlx::Pool<sqlx::Postgre
 
         println!("Row: {:?}", row);
         // get values from row
-        let mut obj = serde_json::Map::new();
+        // let mut obj = serde_json::Map::new();
+        let mut obj = HashMap::new();
         for column in row.columns() {
             let col_name = column.name();
-            let value: Result<JSON, _> = row.try_get(col_name);
+            // let value: Result<JSON, _> = row.try_get(col_name);
+            let value = row.try_get_raw(col_name);
             if let Ok(value) = value {
-                obj.insert(col_name.to_string(), value);
+                obj.insert(col_name.to_string(), value.as_str().unwrap_or(""));
             } else {
-                obj.insert(col_name.to_string(), JSON::Null);
+                obj.insert(col_name.to_string(), "");
             }
         }
         println!("values: {:?}", obj);
-        Ok(Some(JSON::Object(obj)))
+
+        // Convert HashMap to JSON
+        let json = JSON::Object(obj.into_iter().map(|(k, v)| (k, JSON::String(v.to_string()))).collect());
+        Ok(Some(json))
+
     } else {
         Ok(None)
     }
