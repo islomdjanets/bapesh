@@ -106,6 +106,7 @@ pub async fn get_from_table(name: &str, id: i64, pool: &sqlx::Pool<sqlx::Postgre
         let mut obj = serde_json::Map::new();
         for column in row.columns() {
             let col_name = column.name();
+            println!("Column: {}", col_name);
             let value: Result<JSON, _> = row.try_get_unchecked(col_name);
             if let Ok(value) = value {
                 obj.insert(col_name.to_string(), value);
