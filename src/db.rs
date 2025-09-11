@@ -125,6 +125,7 @@ pub async fn get_from_table(name: &str, id: i64, pool: &sqlx::Pool<sqlx::Postgre
                     let type_oid = type_info.oid().map(|oid| oid.0 as u32);  // OID via public oid() method
                     let type_name = type_info.name();  // String like "int8", "text[]", "timestamptz"
 
+                    println!("Type OID: {:?}, Type Name: {}", type_oid, type_name);
                     // Dispatch based on OID (primary) or fallback to name matching
                     let value = match type_oid {
                         // JSON/JSONB OIDs
