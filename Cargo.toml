@@ -35,7 +35,7 @@ futures = { version = "0.3", default-features = false }
 # rustls = "0.23.26"
 # rustls-pemfile = "2.2.0"
 
-sqlx = { version = "0.8", optional = true, features = ["postgres", "runtime-tokio-rustls"] }
+sqlx = { version = "0.8", optional = true, features = ["postgres", "json", "chrono", "runtime-tokio-rustls"] }
 # axum-server = { version = "0.7", features = ["tls-rustls-no-provider"] }
 
 #telegram

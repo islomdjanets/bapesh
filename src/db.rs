@@ -1,6 +1,10 @@
-use sqlx::{pool, postgres::PgPoolOptions, Connection, Postgres, Row};
+use sqlx::{pool, TypeInfo, postgres::{PgPoolOptions, PgTypeInfo, PgValueRef}, Decode, ValueRef, Connection, Postgres, Row};
+// use sqlx::postgres::type_info::PgTypeInfo;
 use sqlx::Column;
 use crate::json::JSON;
+use std::borrow::Cow;
+
+use serde_json::json;
 
 pub type StdError = Box<dyn std::error::Error + Send + Sync>;
 pub type Pool = sqlx::Pool<sqlx::Postgres>; 
@@ -102,19 +106,105 @@ pub async fn get_from_table(name: &str, id: i64, pool: &sqlx::Pool<sqlx::Postgre
         // Ok(Some(json))
 
         println!("Row: {:?}", row);
-        // get values from row
         let mut obj = serde_json::Map::new();
         for column in row.columns() {
             let col_name = column.name();
             println!("Column: {}", col_name);
-            let value: Result<JSON, _> = row.try_get_unchecked(col_name);
-            if let Ok(value) = value {
-                obj.insert(col_name.to_string(), value);
-            } else {
-                println!("Error getting column {}: {:?}", col_name, value.err());
-                obj.insert(col_name.to_string(), JSON::Null);
+
+            // Get raw value to inspect type without decoding
+            let raw_value = row.try_get_raw(col_name);
+            match raw_value {
+                Ok(raw) => {
+                    if raw.is_null() {
+                        obj.insert(col_name.to_string(), JSON::Null);
+                        continue;
+                    }
+
+                    // Get type info
+                    let type_info = raw.type_info();
+                    let type_oid = type_info.oid().map(|oid| oid.0 as u32);  // OID via public oid() method
+                    let type_name = type_info.name();  // String like "int8", "text[]", "timestamptz"
+
+                    // Dispatch based on OID (primary) or fallback to name matching
+                    let value = match type_oid {
+                        // JSON/JSONB OIDs
+                        Some(114) | Some(3802) => {
+                            <JSON as Decode<Postgres>>::decode(raw).unwrap_or(JSON::Null)
+                        }
+                        // BIGINT/INT8 OID
+                        Some(20) => {
+                            let num: i64 = <i64 as Decode<Postgres>>::decode(raw).unwrap_or(0);
+                            json!(num)
+                        }
+                        // Array types (examples: TEXT[]=1009, BOOL[]=1000, INT4[]=1007, etc.)
+                        Some(1009) | Some(1000) | Some(1007) | Some(1014) | Some(1015) | Some(1005) => {
+                            // Decode to &str (array as text like '{"item1","item2"}'), then parse as JSON array
+                            let arr_str: &str = <&str as Decode<Postgres>>::decode(raw).unwrap_or("[]");
+                            serde_json::from_str(arr_str).unwrap_or_else(|_| json!([]))
+                        }
+                        // TIMESTAMPTZ OID (1184)
+                        Some(1184) => {
+                            // Requires sqlx "chrono" feature; decodes to ISO string
+                            use chrono::{DateTime, Utc};
+                            match <DateTime<Utc> as Decode<Postgres>>::decode(raw) {
+                                Ok(dt) => json!(dt.to_rfc3339()),
+                                Err(_) => json!(null),  // Fallback if feature missing
+                            }
+                        }
+                        // TEXT/VARCHAR OIDs (25, 1043)
+                        Some(25) | Some(1043) => {
+                            let s: &str = <&str as Decode<Postgres>>::decode(raw).unwrap_or("");
+                            json!(s)
+                        }
+                        // Fallback: Use type_name for unknown OIDs
+                        _ => match type_name {
+                            "int8" | "bigint" => {
+                                let num: i64 = <i64 as Decode<Postgres>>::decode(raw).unwrap_or(0);
+                                json!(num)
+                            }
+                            "timestamp with time zone" | "timestamptz" => {
+                                use chrono::{DateTime, Utc};
+                                match <DateTime<Utc> as Decode<Postgres>>::decode(raw) {
+                                    Ok(dt) => json!(dt.to_rfc3339()),
+                                    Err(_) => json!(null),
+                                }
+                            }
+                            "text[]" | "character varying[]" | "integer[]" | "bigint[]" => {  // Covers your arrays like rooms/inventory/referrals_*
+                                let arr_str: &str = <&str as Decode<Postgres>>::decode(raw).unwrap_or("[]");
+                                serde_json::from_str(arr_str).unwrap_or_else(|_| json!([]))
+                            }
+                            "json" | "jsonb" => {  // Extra safety for JSON via name
+                                <JSON as Decode<Postgres>>::decode(raw).unwrap_or(JSON::Null)
+                            }
+                            _ => {
+                                // Ultimate fallback: Try as string
+                                let s: &str = <&str as Decode<Postgres>>::decode(raw).unwrap_or("null");
+                                json!(s)
+                            }
+                        }
+                    };
+                    obj.insert(col_name.to_string(), value);
+                }
+                Err(e) => {
+                    println!("Error getting raw column {}: {:?}", col_name, e);
+                    obj.insert(col_name.to_string(), JSON::Null);
+                }
             }
         }
+        // // get values from row
+        // let mut obj = serde_json::Map::new();
+        // for column in row.columns() {
+        //     let col_name = column.name();
+        //     println!("Column: {}", col_name);
+        //     let value: Result<JSON, _> = row.try_get_unchecked(col_name);
+        //     if let Ok(value) = value {
+        //         obj.insert(col_name.to_string(), value);
+        //     } else {
+        //         println!("Error getting column {}: {:?}", col_name, value.err());
+        //         obj.insert(col_name.to_string(), JSON::Null);
+        //     }
+        // }
+
         println!("values: {:?}", obj);
         Ok(Some(JSON::Object(obj)))
     } else {
