@@ -145,9 +145,9 @@ pub fn generate_values(json: &JSON) -> (String, String) {
             keys.push_str(&format!("{}, ", key));
             values.push_str(&format!("'{}', ", value));
 
-            keys = keys.trim_end_matches(", ").to_string();
-            values = values.trim_end_matches(", ").to_string();
         }
+        keys = keys.trim_end_matches(", ").to_string();
+        values = values.trim_end_matches(", ").to_string();
     }
 
     (keys, values)
