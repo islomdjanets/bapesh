@@ -107,6 +107,10 @@ pub async fn get_from_table(name: &str, id: i64, pool: &sqlx::Pool<sqlx::Postgre
 pub async fn insert_into_table(name: &str, values: &JSON, pool: &sqlx::Pool<sqlx::Postgres>) -> Result<(), StdError> {
     let (keys, values) = generate_values(values);
 
+    println!("Inserting into table: {}", name);
+    println!("Keys: {}", keys);
+    println!("Values: {}", values);
+
     let query = &format!("INSERT INTO {} ({}) VALUES ({})", name, keys, values);
 
     // Here you would typically bind the values to the query
