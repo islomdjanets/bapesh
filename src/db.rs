@@ -125,6 +125,8 @@ pub async fn get_from_table(name: &str, id: i64, pool: &sqlx::Pool<sqlx::Postgre
                     let type_oid = type_info.oid().map(|oid| oid.0 as u32);  // OID via public oid() method
                     let type_name = type_info.name();  // String like "int8", "text[]", "timestamptz"
 
+                    println!("Decoding type: OID={} Name={}", type_oid.unwrap_or(0), type_name);
+
                     // Dispatch based on OID (primary) or fallback to name matching
                     let value = match type_oid {
                         // JSON/JSONB OIDs
@@ -138,6 +140,7 @@ pub async fn get_from_table(name: &str, id: i64, pool: &sqlx::Pool<sqlx::Postgre
                         }
                         // Array types (examples: TEXT[]=1009, INT4[]=1007, etc.)
                         Some(1009) | Some(1000) | Some(1007) | Some(1014) | Some(1015) | Some(1005) => {
+                            println!("Decoding array type");
                             // Decode to Vec<String> (native for text[]; adjust for other elem types)
                             // For empty: vec![], for non-empty: vec!["item1", "item2"]
                             match <Vec<String> as Decode<Postgres>>::decode(raw.clone()) {
