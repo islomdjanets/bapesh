@@ -139,7 +139,7 @@ pub fn generate_values(json: &JSON) -> (String, String) {
             // };
 
             println!("Processing key: {}, value: {:?}", key, value);
-            let value = value.as_str().unwrap_or("NULL");
+            // let value = value.as_str().unwrap_or("NULL");
             // result.push_str(&format!("{}: {}, ", key, value));
 
             keys.push_str(&format!("{}, ", key));
