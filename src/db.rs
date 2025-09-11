@@ -1,4 +1,4 @@
-use sqlx::{pool, TypeInfo, postgres::{PgPoolOptions, PgTypeInfo, PgValueRef}, Decode, ValueRef, Connection, Postgres, Row};
+use sqlx::{pool, postgres::{PgPoolOptions, PgQueryResult, PgTypeInfo, PgValueRef}, Connection, Decode, Postgres, Row, TypeInfo, ValueRef};
 // use sqlx::postgres::type_info::PgTypeInfo;
 use sqlx::Column;
 use crate::json::JSON;
@@ -238,7 +238,7 @@ pub async fn get_from_table(name: &str, id: i64, pool: &sqlx::Pool<sqlx::Postgre
     }
 }
 
-pub async fn insert_into_table(name: &str, values: &JSON, pool: &sqlx::Pool<sqlx::Postgres>) -> Result<(), StdError> {
+pub async fn insert_into_table(name: &str, values: &JSON, pool: &sqlx::Pool<sqlx::Postgres>) -> Result<PgQueryResult, StdError> {
     let (keys, values) = generate_values(values);
 
     println!("Inserting into table: {}", name);
@@ -249,11 +249,15 @@ pub async fn insert_into_table(name: &str, values: &JSON, pool: &sqlx::Pool<sqlx
 
     // Here you would typically bind the values to the query
     // For simplicity, we are not binding any values in this example
-    sqlx::query(query)
+    let result = sqlx::query(query)
         .execute(pool)
-        .await?;
+        .await;
 
-    Ok(())
+    if result.is_err() {
+        println!("Error inserting into table: {:?}", result.as_ref().err());
+    }
+
+    result.map_err(|e| Box::new(e) as StdError)
 }
 
 pub fn generate_values(json: &JSON) -> (String, String) {
