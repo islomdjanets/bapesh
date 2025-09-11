@@ -278,13 +278,21 @@ pub async fn generate_properties(schema: &JSON, pool: &sqlx::Pool<sqlx::Postgres
 
 pub fn get_default_value(r#type: &str) -> String {
     match r#type {
-        "string" => "''",
-        "int" | "u8" | "u16" | "i8" | "i16" | "u32" | "i32" | "u64" | "usize" | "i64" | "isize" => "0",
-        "float" | "f32" | "f64" => "0.0",
-        "bool" => "FALSE",
-        "TIMESTAMP" => "CURRENT_TIMESTAMP",
+        "TEXT" => "''",
+        "BIGINT" | "INTEGER" | "int" | "u8" | "u16" | "i8" | "i16" | "u32" | "i32" | "u64" | "usize" | "i64" | "isize" => "0",
+        "REAL" | "float" | "f32" | "f64" => "0.0",
+        "BOOLEAN" | "bool" => "FALSE",
+
+        "TIMESTAMP WITH TIME ZONE" => "CURRENT_TIMESTAMP",
+        "TIMESTAMP WITHOUT TIME ZONE" => "CURRENT_TIMESTAMP",
         "DATE" => "CURRENT_DATE",
         "TIME" => "CURRENT_TIME",
+
+        "REAL[2]" => "{0.0, 0.0}",
+        "REAL[3]" => "{0.0, 0.0, 0.0}",
+        "REAL[4]" => "{0.0, 0.0, 0.0, 0.0}",
+        "SMALLINT[4]" => "{0, 0, 0, 0}", // Assuming Color is a 4-component RGBA color
+
         _ => "NULL", // Default to NULL for unknown types
     }.to_string()
 }
