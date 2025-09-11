@@ -107,12 +107,10 @@ pub async fn get_from_table(name: &str, id: i64, pool: &sqlx::Pool<sqlx::Postgre
         for column in row.columns() {
             let col_name = column.name();
             let value: Result<JSON, _> = row.try_get_unchecked(col_name);
-            if value.is_err() {
-                println!("Error getting column {}: {:?}", col_name, value.err());
-            }
             if let Ok(value) = value {
                 obj.insert(col_name.to_string(), value);
             } else {
+                println!("Error getting column {}: {:?}", col_name, value.err());
                 obj.insert(col_name.to_string(), JSON::Null);
             }
         }
