@@ -139,7 +139,7 @@ pub async fn get_from_table(name: &str, id: i64, pool: &sqlx::Pool<sqlx::Postgre
                             json!(num)
                         }
                         // Array types (examples: TEXT[]=1009, INT4[]=1007, etc.)
-                        Some(1009) | Some(1000) | Some(1007) | Some(1014) | Some(1015) | Some(1005) => {
+                        Some(1009) | Some(1000) | Some(1007) | Some(1014) | Some(1015) | Some(1016) | Some(1005) => {
                             println!("Decoding array type");
                             // Decode to Vec<String> (native for text[]; adjust for other elem types)
                             // For empty: vec![], for non-empty: vec!["item1", "item2"]
@@ -167,7 +167,7 @@ pub async fn get_from_table(name: &str, id: i64, pool: &sqlx::Pool<sqlx::Postgre
                             json!(s)
                         }
                         // Fallback: Use type_name for unknown OIDs
-                        _ => match type_name {
+                        _ => match type_name.to_lowercase().as_str() {
                             "int8" | "bigint" => {
                                 let num: i64 = <i64 as Decode<Postgres>>::decode(raw).unwrap_or(0);
                                 json!(num)
@@ -179,7 +179,7 @@ pub async fn get_from_table(name: &str, id: i64, pool: &sqlx::Pool<sqlx::Postgre
                                     Err(_) => json!(null),
                                 }
                             }
-                            "text[]" | "character varying[]" | "integer[]" | "bigint[]" => {
+                            "text[]" | "character varying[]" | "integer[]" | "int8[]" | "bigint[]" => {
                                 // Same Vec<String> decode for string arrays; for int[] use Vec<i32>
                                 match <Vec<String> as Decode<Postgres>>::decode(raw.clone()) {
                                     Ok(arr) => json!(arr),
