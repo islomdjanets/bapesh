@@ -97,19 +97,28 @@ pub async fn get_from_table(name: &str, id: i64, pool: &sqlx::Pool<sqlx::Postgre
     let query = &format!("SELECT * FROM {} WHERE id = $1", name);
     let row = sqlx::query(query)
         .bind(id)
-        .fetch_optional(pool)
-        .await?;
+        // .fetch_optional(pool)
+        .fetch_one(pool)
+        // .execute(pool)
+        .await;
+
+    // if row.is_err() {
+    //     println!("Error fetching row: {:?}", row.err());
+    //     return Ok(None);
+    // }
+
+    // let row = row.unwrap();
 
 
-    if let Some(row) = row {
+    if let Ok(row) = row {
         // let json: JSON = row.try_get("data")?; // Assuming the column is named 'data'
         // Ok(Some(json))
 
-        println!("Row: {:?}", row);
+        // println!("Row: {:?}", row);
         let mut obj = serde_json::Map::new();
         for column in row.columns() {
             let col_name = column.name();
-            println!("Column: {}", col_name);
+            // println!("Column: {}", col_name);
 
             // Get raw value to inspect type without decoding
             let raw_value = row.try_get_raw(col_name);
@@ -125,7 +134,7 @@ pub async fn get_from_table(name: &str, id: i64, pool: &sqlx::Pool<sqlx::Postgre
                     let type_oid = type_info.oid().map(|oid| oid.0 as u32);  // OID via public oid() method
                     let type_name = type_info.name();  // String like "int8", "text[]", "timestamptz"
 
-                    println!("Decoding type: OID={} Name={}", type_oid.unwrap_or(0), type_name);
+                    // println!("Decoding type: OID={} Name={}", type_oid.unwrap_or(0), type_name);
 
                     // Dispatch based on OID (primary) or fallback to name matching
                     let value = match type_oid {
@@ -140,7 +149,7 @@ pub async fn get_from_table(name: &str, id: i64, pool: &sqlx::Pool<sqlx::Postgre
                         }
                         // Array types (examples: TEXT[]=1009, INT4[]=1007, etc.)
                         Some(1009) | Some(1000) | Some(1007) | Some(1014) | Some(1015) | Some(1016) | Some(1005) => {
-                            println!("Decoding array type");
+                            // println!("Decoding array type");
                             // Decode to Vec<String> (native for text[]; adjust for other elem types)
                             // For empty: vec![], for non-empty: vec!["item1", "item2"]
                             match <Vec<String> as Decode<Postgres>>::decode(raw.clone()) {
@@ -224,6 +233,7 @@ pub async fn get_from_table(name: &str, id: i64, pool: &sqlx::Pool<sqlx::Postgre
         println!("values: {:?}", obj);
         Ok(Some(JSON::Object(obj)))
     } else {
+        println!("No row found with id: {} {}", id, row.err().unwrap());
         Ok(None)
     }
 }
