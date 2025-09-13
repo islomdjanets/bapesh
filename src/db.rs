@@ -806,13 +806,13 @@ pub async fn update_hstore_by_key(
 
 pub async fn update_jsonb_by_key(
     table: &str, column: &str, id: i64,
-    key: &JSON, value: &JSON, create_if_not_exists: bool,
+    key: &str, value: &JSON, create_if_not_exists: bool,
     pool: &Pool,// &sqlx::Pool<sqlx::Postgres>
 ) -> Result<(), StdError> {
 
     let query = &format!(
         r#"UPDATE {}
-        SET {} = jsonb_set({}, $1, $2::jsonb, $3)
+        SET {} = jsonb_set({}, '{{$1}}', $2::jsonb, $3)
         WHERE id = $4"#,
         table, column, column
     );
