@@ -780,7 +780,7 @@ pub async fn remove_hstore_by_key(table: &str, column: &str, id: i64, key: &str,
 
 pub async fn update_hstore_by_key(
     table: &str, column: &str, id: i64,
-    key: &JSON, value: &JSON, create_if_not_exists: bool,
+    key: &str, value: &JSON, create_if_not_exists: bool,
     pool: &Pool,// &sqlx::Pool<sqlx::Postgres>
 ) -> Result<(), StdError> {
 
