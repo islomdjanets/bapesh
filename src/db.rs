@@ -652,6 +652,28 @@ pub async fn get_tables(pool: &sqlx::Pool<sqlx::Postgres>) -> Result<Vec<JSON>, 
     Ok(tables)
 }
 
+pub async fn update_jsonb_array_by_key(table: &str, map_name: &str, id: i64, key: &str, value: &str, index: Option<i32>, pool: &Pool) -> Result<(), StdError> {
+    let query = {
+        if !index.is_none() {
+            format!("UPDATE {} SET {} = jsonb_set({}, '{{{}, {}}}', $1::jsonb) WHERE id = $2",
+                table, map_name, map_name, key, index.unwrap())
+        } else {
+            format!("UPDATE {} SET {} = jsonb_set({}, '{{{}}}', ({}->'{}' || $1::jsonb)) WHERE id = $2",
+                table, map_name, map_name, key, map_name, key)
+        }
+    };
+    println!("Update JSONB array by key query: {}", query);
+
+    sqlx::query(&query)
+
+        .bind(value)
+        .bind(id)
+
+        .execute(pool)
+        .await?;
+    Ok(())
+}
+
 pub async fn update(table: &str, key: &str, id: i64, value: &str, pool: &Pool, cast: &str) -> Result<(), StdError> {
     let query = &format!("UPDATE {} SET {} = $1::{} WHERE id = $2", table, key, cast);
 
