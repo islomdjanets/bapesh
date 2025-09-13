@@ -114,7 +114,7 @@ pub async fn get_from_table(name: &str, id: i64, pool: &sqlx::Pool<sqlx::Postgre
         // let json: JSON = row.try_get("data")?; // Assuming the column is named 'data'
         // Ok(Some(json))
 
-        // println!("Row: {:?}", row);
+        println!("Row: {:?}", row);
         let mut obj = serde_json::Map::new();
         for column in row.columns() {
             let col_name = column.name();
