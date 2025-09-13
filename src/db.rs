@@ -652,6 +652,18 @@ pub async fn get_tables(pool: &sqlx::Pool<sqlx::Postgres>) -> Result<Vec<JSON>, 
     Ok(tables)
 }
 
+pub async fn update(table: &str, key: &str, id: i64, value: &JSON, pool: &Pool) -> Result<(), StdError> {
+    let query = &format!("UPDATE {} SET {} = $1 WHERE id = $2", table, key);
+    sqlx::query(query)
+
+        .bind(value)
+        .bind(id)
+
+        .execute(pool)
+        .await?;
+    Ok(())
+}
+
 pub async fn remove_from_set(table: &str, column: &str, id: i64, value: &str, pool: &sqlx::Pool<sqlx::Postgres>) -> Result<(), StdError> {
     let query = &format!("UPDATE {} SET {} = array_remove({}, $1) WHERE id = $2", table, column, column);
     sqlx::query(query)
