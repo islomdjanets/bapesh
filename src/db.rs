@@ -786,7 +786,7 @@ pub async fn update_hstore_by_key(
 
     let query = &format!(
         r#"UPDATE {}
-        SET {} = {} || hstore($1, $2)
+        SET {} = {} || hstore($1, $2::hstore)
         WHERE id = $3"#,
         table, column, column
     );
@@ -812,7 +812,7 @@ pub async fn update_jsonb_by_key(
 
     let query = &format!(
         r#"UPDATE {}
-        SET {} = jsonb_set({}, $1, $2, $3)
+        SET {} = jsonb_set({}, $1, $2::jsonb, $3)
         WHERE id = $4"#,
         table, column, column
     );
