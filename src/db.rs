@@ -361,8 +361,8 @@ pub async fn generate_properties(schema: &JSON, pool: &sqlx::Pool<sqlx::Postgres
             if value.is_object() {
                 let info = value.as_object().unwrap();
                 value = info.get("type").unwrap_or(value);
-                let description = info.get("description").unwrap_or(&JSON::Null);
-                let default = info.get("default").unwrap_or(&JSON::Null);
+                // let description = info.get("description").unwrap_or(&JSON::Null);
+                // let default = info.get("default").unwrap_or(&JSON::Null);
 
                 // println!("Value is an object. Type: {:?}", value);
             }
@@ -476,7 +476,7 @@ pub async fn generate_properties(schema: &JSON, pool: &sqlx::Pool<sqlx::Postgres
 }
 
 pub fn get_default_value(r#type: &str) -> String {
-    println!("Getting default value for type: {}", r#type);
+    // println!("Getting default value for type: {}", r#type);
     match r#type {
         "TEXT" => "''",
         "BIGINT" | "INTEGER" | "int" | "u8" | "u16" | "i8" | "i16" | "u32" | "i32" | "u64" | "usize" | "i64" | "isize" => "0",
@@ -502,7 +502,7 @@ pub async fn create_table(name: &str, schema: &JSON, pool: &sqlx::Pool<sqlx::Pos
     println!("Properties: {}", properties);
 
     let query = &format!("CREATE TABLE {} ({});", name, properties);
-    println!("Create table query: {}", query);
+    // println!("Create table query: {}", query);
 
     sqlx::query(query)
         .execute(pool)
@@ -649,4 +649,95 @@ pub async fn get_tables(pool: &sqlx::Pool<sqlx::Postgres>) -> Result<Vec<JSON>, 
     }
 
     Ok(tables)
+}
+
+pub async fn remove_from_array(table: &str, column: &str, id: i64, value: &str, pool: &sqlx::Pool<sqlx::Postgres>) -> Result<(), StdError> {
+    let query = &format!("UPDATE {} SET {} = array_remove({}, $1) WHERE id = $2", table, column, column);
+    sqlx::query(query)
+        .bind(value)
+        .bind(id)
+        .execute(pool)
+        .await?;
+    Ok(())
+}
+
+pub async fn empty_array(table: &str, column: &str, id: i64, pool: &sqlx::Pool<sqlx::Postgres>) -> Result<(), StdError> {
+    let query = &format!("UPDATE {} SET {} = '{{}}' WHERE id = $1", table, column);
+    sqlx::query(query)
+        .bind(id)
+        .execute(pool)
+        .await?;
+    Ok(())
+}
+
+pub async fn add_to_array(table: &str, column: &str, id: i64, value: &str, pool: &sqlx::Pool<sqlx::Postgres>) -> Result<(), StdError> {
+    let query = &format!("UPDATE {} SET {} = array_append({}, $1) WHERE id = $2", table, column, column);
+    sqlx::query(query)
+        .bind(value)
+        .bind(id)
+        .execute(pool)
+        .await?;
+    Ok(())
+}
+
+pub async fn empty_map(table: &str, column: &str, id: i64, pool: &sqlx::Pool<sqlx::Postgres>) -> Result<(), StdError> {
+    let is_hstore = {
+        let query = "SELECT EXISTS (
+            SELECT 1 FROM pg_type WHERE typname = 'hstore'
+        )";
+
+        let row = sqlx::query(query)
+            .fetch_one(pool)
+            .await?;
+
+        let exists: bool = row.get(0);
+        exists
+    };
+    if is_hstore {
+        let query = &format!("UPDATE {} SET {} = ''::HSTORE WHERE id = $1", table, column);
+        sqlx::query(query)
+            .bind(id)
+            .execute(pool)
+            .await?;
+        return Ok(());
+    } else {
+        let query = &format!("UPDATE {} SET {} = '{{}}'::JSONB WHERE id = $1", table, column);
+        sqlx::query(query)
+            .bind(id)
+            .execute(pool)
+            .await?;
+    }
+    Ok(())
+}
+
+pub async fn get_table_schema(name: &str, pool: &sqlx::Pool<sqlx::Postgres>) -> Result<JSON, StdError> {
+    let query = "SELECT column_name, data_type, is_nullable, column_default
+        FROM information_schema.columns
+        WHERE table_name = $1";
+
+    let rows = sqlx::query(query)
+        .bind(name)
+        .fetch_all(pool)
+        .await?;
+
+    let mut schema = serde_json::Map::new();
+    for row in rows {
+        let column_name: String = row.get("column_name");
+        let data_type: String = row.get("data_type");
+        let is_nullable: String = row.get("is_nullable");
+        let column_default: Option<String> = row.get("column_default");
+
+        let mut column_info = serde_json::Map::new();
+        column_info.insert("type".to_string(), JSON::String(data_type.clone()));
+        column_info.insert("nullable".to_string(), JSON::Bool(is_nullable == "YES"));
+        if let Some(default) = column_default {
+            column_info.insert("default".to_string(), JSON::String(default));
+        } else {
+            column_info.insert("default".to_string(), JSON::Null);
+        }
+
+        schema.insert(column_name, JSON::Object(column_info));
+    }
+
+    Ok(JSON::Object(schema))
 }
