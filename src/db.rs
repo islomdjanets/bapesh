@@ -1,8 +1,9 @@
+// use anyhow::Ok;
 use sqlx::{pool, postgres::{PgPoolOptions, PgQueryResult, PgTypeInfo, PgValueRef}, Connection, Decode, Postgres, Row, TypeInfo, ValueRef};
 // use sqlx::postgres::type_info::PgTypeInfo;
 use sqlx::Column;
 use crate::json::JSON;
-use std::borrow::Cow;
+// use std::borrow::Cow;
 
 use serde_json::json;
 
@@ -651,10 +652,49 @@ pub async fn get_tables(pool: &sqlx::Pool<sqlx::Postgres>) -> Result<Vec<JSON>, 
     Ok(tables)
 }
 
-pub async fn remove_from_array(table: &str, column: &str, id: i64, value: &str, pool: &sqlx::Pool<sqlx::Postgres>) -> Result<(), StdError> {
+pub async fn remove_from_set(table: &str, column: &str, id: i64, value: &str, pool: &sqlx::Pool<sqlx::Postgres>) -> Result<(), StdError> {
     let query = &format!("UPDATE {} SET {} = array_remove({}, $1) WHERE id = $2", table, column, column);
     sqlx::query(query)
         .bind(value)
+        .bind(id)
+        .execute(pool)
+        .await?;
+    Ok(())
+}
+
+pub async fn remove_from_array(table: &str, column: &str, id: i64, index: f32, pool: &sqlx::Pool<sqlx::Postgres>) -> Result<(), StdError> {
+
+    if index == 0.0 {
+        return Ok(()); // No-op for index 0
+    }
+
+    if index == 1.0 {
+        // Remove first element
+        let query = &format!("UPDATE {} SET {} = {}[2:array_length({}, 1)] WHERE id = $1", table, column, column, column);
+        sqlx::query(query)
+            .bind(id)
+            .execute(pool)
+            .await?;
+
+        return Ok(());
+    }
+    if index == -1.0 {
+        // Remove last element
+        let query = &format!("UPDATE {} SET {} = {}[1:array_length({}, 1)-1] WHERE id = $1", table, column, column, column);
+        sqlx::query(query)
+            .bind(id)
+            .execute(pool)
+            .await?;
+
+        return Ok(());
+    }
+    let start = index - 1.0;
+    let end = index + 1.0;
+    let query = &format!("UPDATE {} SET {} = array_cat({}[{}:{}], {}[{}:{}]) WHERE id = $1", table, column, column, start as i32, start as i32, column, end as i32, end as i32);
+    println!("Remove for Array Query: {}", query);
+    // let query = &format!("UPDATE {} SET {} = array_cat({}, $1) WHERE id = $2", table, column, column);
+    sqlx::query(query)
+        .bind(index)
         .bind(id)
         .execute(pool)
         .await?;
@@ -670,7 +710,7 @@ pub async fn empty_array(table: &str, column: &str, id: i64, pool: &sqlx::Pool<s
     Ok(())
 }
 
-pub async fn add_to_array(table: &str, column: &str, id: i64, value: &str, pool: &sqlx::Pool<sqlx::Postgres>) -> Result<(), StdError> {
+pub async fn add_to_array(table: &str, column: &str, id: i64, value: &JSON, pool: &sqlx::Pool<sqlx::Postgres>) -> Result<(), StdError> {
     let query = &format!("UPDATE {} SET {} = array_append({}, $1) WHERE id = $2", table, column, column);
     sqlx::query(query)
         .bind(value)
@@ -680,35 +720,161 @@ pub async fn add_to_array(table: &str, column: &str, id: i64, value: &str, pool:
     Ok(())
 }
 
-pub async fn empty_map(table: &str, column: &str, id: i64, pool: &sqlx::Pool<sqlx::Postgres>) -> Result<(), StdError> {
-    let is_hstore = {
-        let query = "SELECT EXISTS (
-            SELECT 1 FROM pg_type WHERE typname = 'hstore'
-        )";
+pub async fn empty_jsonb(table: &str, column: &str, id: i64, pool: &sqlx::Pool<sqlx::Postgres>) -> Result<(), StdError> {
+    let query = &format!("UPDATE {} SET {} = '{{}}'::JSONB WHERE id = $1", table, column);
+    sqlx::query(query)
+        .bind(id)
+        .execute(pool)
+        .await?;
 
-        let row = sqlx::query(query)
-            .fetch_one(pool)
-            .await?;
-
-        let exists: bool = row.get(0);
-        exists
-    };
-    if is_hstore {
-        let query = &format!("UPDATE {} SET {} = ''::HSTORE WHERE id = $1", table, column);
-        sqlx::query(query)
-            .bind(id)
-            .execute(pool)
-            .await?;
-        return Ok(());
-    } else {
-        let query = &format!("UPDATE {} SET {} = '{{}}'::JSONB WHERE id = $1", table, column);
-        sqlx::query(query)
-            .bind(id)
-            .execute(pool)
-            .await?;
-    }
     Ok(())
 }
+
+pub async fn empty_hstore(table: &str, column: &str, id: i64, pool: &sqlx::Pool<sqlx::Postgres>) -> Result<(), StdError> {
+    let query = &format!("UPDATE {} SET {} = ''::HSTORE WHERE id = $1", table, column);
+    sqlx::query(query)
+        .bind(id)
+        .execute(pool)
+        .await?;
+
+    Ok(())
+}
+
+pub async fn remove_jsonb_by_key(table: &str, column: &str, id: i64, key: &JSON, pool: &Pool) -> Result<(), StdError> {
+    let query = &format!(
+        r#"UPDATE {}
+        SET {} = {} - $1
+        WHERE id = $2"#,
+        table, column, column
+    );
+
+    println!("Remove JSONB by key query: {}", query);
+
+    sqlx::query(query)
+        .bind(key)
+        .bind(id)
+        .execute(pool)
+        .await?;
+
+    Ok(())
+}
+
+pub async fn remove_hstore_by_key(table: &str, column: &str, id: i64, key: &str, pool: &Pool) -> Result<(), StdError> {
+    let query = &format!(
+        r#"UPDATE {}
+        SET {} = delete({}, $1)
+        WHERE id = $2"#,
+        table, column, column
+    );
+
+    println!("Remove HSTORE by key query: {}", query);
+
+    sqlx::query(query)
+        .bind(key)
+        .bind(id)
+        .execute(pool)
+        .await?;
+
+    Ok(())
+}
+
+pub async fn update_hstore_by_key(
+    table: &str, column: &str, id: i64,
+    key: &str, value: &str,
+    pool: &Pool,// &sqlx::Pool<sqlx::Postgres>
+) -> Result<(), StdError> {
+
+    let query = &format!(
+        r#"UPDATE {}
+        SET {} = {} || hstore($1, $2)
+        WHERE id = $3"#,
+        table, column, column
+    );
+
+    println!("Update HSTORE by key query: {}", query);
+
+    sqlx::query(query)
+        .bind(key)
+        .bind(value)
+        .bind(id)
+
+        .execute(pool)
+        .await?;
+
+    Ok(())
+}
+
+pub async fn update_jsonb_by_key(
+    table: &str, column: &str, id: i64,
+    key: &JSON, value: &JSON, create_if_not_exists: bool,
+    pool: &Pool,// &sqlx::Pool<sqlx::Postgres>
+) -> Result<(), StdError> {
+
+    let query = &format!(
+        r#"UPDATE {}
+        SET {} = jsonb_set({}, $1, $2, $3)
+        WHERE id = $4"#,
+        table, column, column
+    );
+
+    println!("Update JSONB by key query: {}", query);
+
+    sqlx::query(query)
+        .bind(key)
+        .bind(value)
+        .bind(create_if_not_exists)
+        .bind(id)
+
+        .execute(pool)
+        .await?;
+
+    Ok(())
+}
+
+pub async fn update_jsonb(table: &str, column: &str, id: i64, value: &JSON, pool: &sqlx::Pool<sqlx::Postgres>) -> Result<(), StdError> {
+    let query = &format!("UPDATE {} SET {} = $1 WHERE id = $2", table, column);
+    sqlx::query(query)
+        .bind(value)
+        .bind(id)
+        .execute(pool)
+        .await?;
+    Ok(())
+}
+
+pub async fn update_hstore(table: &str, column: &str, id: i64, value: &JSON, pool: &sqlx::Pool<sqlx::Postgres>) -> Result<(), StdError> {
+    let query = &format!("UPDATE {} SET {} = $1::HSTORE WHERE id = $2", table, column);
+    sqlx::query(query)
+        .bind(value)
+        .bind(id)
+        .execute(pool)
+        .await?;
+    Ok(())
+}
+
+// pub async fn empty_map(table: &str, column: &str, id: i64, pool: &sqlx::Pool<sqlx::Postgres>) -> Result<(), StdError> {
+//     let is_hstore = {
+//         let query = "SELECT EXISTS (
+//             SELECT 1 FROM pg_type WHERE typname = 'hstore'
+//         )";
+
+//         let row = sqlx::query(query)
+//             .fetch_one(pool)
+//             .await?;
+
+//         let exists: bool = row.get(0);
+//         exists
+//     };
+//     if is_hstore {
+//         let query = &format!("UPDATE {} SET {} = ''::HSTORE WHERE id = $1", table, column);
+//         sqlx::query(query)
+//             .bind(id)
+//             .execute(pool)
+//             .await?;
+//         return Ok(());
+//     } else {
+//     }
+//     Ok(())
+// }
 
 pub async fn get_table_schema(name: &str, pool: &sqlx::Pool<sqlx::Postgres>) -> Result<JSON, StdError> {
     let query = "SELECT column_name, data_type, is_nullable, column_default
