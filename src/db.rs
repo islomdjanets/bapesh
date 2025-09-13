@@ -652,7 +652,7 @@ pub async fn get_tables(pool: &sqlx::Pool<sqlx::Postgres>) -> Result<Vec<JSON>, 
     Ok(tables)
 }
 
-pub async fn update(table: &str, key: &str, id: i64, value: &JSON, pool: &Pool) -> Result<(), StdError> {
+pub async fn update(table: &str, key: &str, id: i64, value: &str, pool: &Pool) -> Result<(), StdError> {
     let query = &format!("UPDATE {} SET {} = $1 WHERE id = $2", table, key);
     sqlx::query(query)
 
