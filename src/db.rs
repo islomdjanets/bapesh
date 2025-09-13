@@ -812,9 +812,9 @@ pub async fn update_jsonb_by_key(
 
     let query = &format!(
         r#"UPDATE {}
-        SET {} = jsonb_set({}, '{{$1}}', $2::jsonb, $3)
+        SET {} = jsonb_set({}, '{{{}}}', $2::jsonb, $3)
         WHERE id = $4"#,
-        table, column, column
+        table, column, column, key,
     );
 
     println!("Update JSONB by key query: {}", query);
