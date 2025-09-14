@@ -654,6 +654,8 @@ pub async fn get_tables(pool: &sqlx::Pool<sqlx::Postgres>) -> Result<Vec<JSON>, 
 
 pub async fn update_jsonb_array_by_key(table: &str, map_name: &str, id: i64, key: &str, value: &str, index: Option<i32>, create_if_not_exists: bool, pool: &Pool) -> Result<(), StdError> {
     let value = format!("[{}]", value); // Wrap value in array brackets
+    println!("Value to insert: {}", value);
+
     let query = {
         if !index.is_none() {
             format!("UPDATE {} SET {} = jsonb_set({}, '{{{}, {}}}', $1::jsonb, {}) WHERE id = $2",
