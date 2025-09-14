@@ -657,11 +657,18 @@ pub async fn update_jsonb_array_by_key(table: &str, map_name: &str, id: i64, key
     println!("Value to insert: {}", value);
 
     let query = {
+        // if !index.is_none() {
+        //     format!("UPDATE {} SET {} = jsonb_set({}, '{{{}, {}}}', $1::jsonb, {}) WHERE id = $2",
+        //         table, map_name, map_name, key, index.unwrap(), create_if_not_exists)
+        // } else {
+        //     format!("UPDATE {} SET {} = jsonb_set({}, '{{{}}}', ({}->'{}' || $1::jsonb), {}) WHERE id = $2",
+        //         table, map_name, map_name, key, map_name, key, create_if_not_exists)
+        // }
         if !index.is_none() {
             format!("UPDATE {} SET {} = jsonb_set({}, '{{{}, {}}}', $1::jsonb, {}) WHERE id = $2",
                 table, map_name, map_name, key, index.unwrap(), create_if_not_exists)
         } else {
-            format!("UPDATE {} SET {} = jsonb_set({}, '{{{}}}', ({}->'{}' || $1::jsonb), {}) WHERE id = $2",
+            format!("UPDATE {} SET {} = jsonb_set(COALESCE({}, '{{}}'::jsonb), '{{{}}}', (COALESCE({}->'{}', '[]'::jsonb) || $1::jsonb), {}) WHERE id = $2",
                 table, map_name, map_name, key, map_name, key, create_if_not_exists)
         }
     };
