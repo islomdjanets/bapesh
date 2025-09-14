@@ -652,14 +652,14 @@ pub async fn get_tables(pool: &sqlx::Pool<sqlx::Postgres>) -> Result<Vec<JSON>, 
     Ok(tables)
 }
 
-pub async fn update_jsonb_array_by_key(table: &str, map_name: &str, id: i64, key: &str, value: &str, index: Option<i32>, pool: &Pool) -> Result<(), StdError> {
+pub async fn update_jsonb_array_by_key(table: &str, map_name: &str, id: i64, key: &str, value: &str, index: Option<i32>, create_if_not_exists: bool, pool: &Pool) -> Result<(), StdError> {
     let query = {
         if !index.is_none() {
-            format!("UPDATE {} SET {} = jsonb_set({}, '{{{}, {}}}', $1::jsonb) WHERE id = $2",
-                table, map_name, map_name, key, index.unwrap())
+            format!("UPDATE {} SET {} = jsonb_set({}, '{{{}, {}}}', $1::jsonb, {}) WHERE id = $2",
+                table, map_name, map_name, key, index.unwrap(), create_if_not_exists)
         } else {
-            format!("UPDATE {} SET {} = jsonb_set({}, '{{{}}}', ({}->'{}' || $1::jsonb)) WHERE id = $2",
-                table, map_name, map_name, key, map_name, key)
+            format!("UPDATE {} SET {} = jsonb_set({}, '{{{}}}', ({}->'{}' || $1::jsonb), {}) WHERE id = $2",
+                table, map_name, map_name, key, map_name, key, create_if_not_exists)
         }
     };
     println!("Update JSONB array by key query: {}", query);
