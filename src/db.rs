@@ -439,7 +439,7 @@ pub async fn generate_properties(schema: &JSON, pool: &sqlx::Pool<sqlx::Postgres
 
                 let sql_type = get_sql_type(inner_type, pool).await;
                 if default_value == "NULL" {
-                    default_value = "".to_string(); // Empty array
+                    default_value = "{{}}".to_string(); // Empty array
                 }
                 //  else if !default_value.starts_with('{') {
                 //     default_value = format!("{{{}}}", default_value); // Wrap in array braces if not already
