@@ -282,7 +282,22 @@ pub async fn get_from_table(name: &str, id: i64, pool: &sqlx::Pool<sqlx::Postgre
     }
 }
 
-pub async fn insert_into_table(name: &str, values: &JSON, pool: &sqlx::Pool<sqlx::Postgres>) -> Result<JSON, StdError> {
+pub async fn insert_into_table_and_return_id(name: &str, values: &JSON, pool: &sqlx::Pool<sqlx::Postgres>) -> Result<i64, StdError> {
+    let (keys, values) = generate_values(values);
+
+    let query = &format!("INSERT INTO {} ({}) VALUES ({}) RETURNING id", name, keys, values);
+    println!("Insert query: {}", query);
+
+    let query = sqlx::query(query);
+    let id: i64 = query
+        .fetch_one(pool)
+        .await?
+        .get("id");
+
+    Ok(id)
+}
+
+pub async fn insert_into_table_and_return(name: &str, values: &JSON, pool: &sqlx::Pool<sqlx::Postgres>) -> Result<JSON, StdError> {
     let (keys, values) = generate_values(values);
 
     println!("Inserting into table: {}", name);
@@ -294,20 +309,15 @@ pub async fn insert_into_table(name: &str, values: &JSON, pool: &sqlx::Pool<sqlx
     let query = &format!("INSERT INTO {} ({}) VALUES ({}) RETURNING *", name, keys, values);
     println!("Insert query: {}", query);
 
-    // Here you would typically bind the values to the query
-    // For simplicity, we are not binding any values in this example
-    let result = sqlx::query(query)
-        .execute(pool)
-        .await;
-
-    // let row: JSON = query_builder
-    //     .fetch_one(pool)
-    //     .await?
-    //     .try_into()?;
     let query = sqlx::query(query);
     let row = query
         .fetch_one(pool)
         .await?;
+
+    // if result.is_err() {
+    //     println!("Error inserting into table: {:?}", result.as_ref().err());
+    //     return Err(Box::new(result.unwrap_err()) as StdError);
+    // }
 
     // Manually convert the row to JSON
     let mut obj = serde_json::Map::new();
@@ -321,6 +331,23 @@ pub async fn insert_into_table(name: &str, values: &JSON, pool: &sqlx::Pool<sqlx
         }
     }
 
+    Ok(JSON::Object(obj))
+}
+
+pub async fn insert_into_table(name: &str, values: &JSON, pool: &sqlx::Pool<sqlx::Postgres>) -> Result<(), StdError> {
+    let (keys, values) = generate_values(values);
+
+    println!("Inserting into table: {}", name);
+    println!("Keys: {}", keys);
+    println!("Values: {}", values);
+
+    let query = &format!("INSERT INTO {} ({}) VALUES ({})", name, keys, values);
+    println!("Insert query: {}", query);
+
+    let result = sqlx::query(query)
+        .execute(pool)
+        .await;
+
     if result.is_err() {
         println!("Error inserting into table: {:?}", result.as_ref().err());
         return Err(Box::new(result.unwrap_err()) as StdError);
@@ -328,8 +355,7 @@ pub async fn insert_into_table(name: &str, values: &JSON, pool: &sqlx::Pool<sqlx
 
     println!("Rows affected: {}", result.unwrap().rows_affected());
 
-    Ok(JSON::Object(obj))
-    // result.map_err(|e| Box::new(e) as StdError)
+    Ok(())
 }
 
 pub fn generate_values(json: &JSON) -> (String, String) {
