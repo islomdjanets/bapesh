@@ -364,7 +364,7 @@ pub async fn generate_properties(schema: &JSON, pool: &sqlx::Pool<sqlx::Postgres
             // println!("Processing key: {}, value: {:?}", key, value);
 
             let mut default_value = "NULL".to_string();
-            println!("Key: {}, Value: {:?}", key, value);
+            // println!("Key: {}, Value: {:?}", key, value);
             if value.is_object() {
                 let info = value.as_object().unwrap();
                 value = info.get("type").unwrap_or(value);
@@ -385,6 +385,7 @@ pub async fn generate_properties(schema: &JSON, pool: &sqlx::Pool<sqlx::Postgres
                                 format!("{}", v)
                             }
                         }).collect();
+                        println!("Array default value for key {}: {:?}", key, arr_str);
                         format!("{{{}}}", arr_str.join(", "))
                     },
                     JSON::Object(obj) => {
