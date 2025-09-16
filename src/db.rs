@@ -364,6 +364,7 @@ pub async fn generate_properties(schema: &JSON, pool: &sqlx::Pool<sqlx::Postgres
             // println!("Processing key: {}, value: {:?}", key, value);
 
             let mut default_value = "NULL".to_string();
+            println!("Key: {}, Value: {:?}", key, value);
             if value.is_object() {
                 let info = value.as_object().unwrap();
                 value = info.get("type").unwrap_or(value);
@@ -538,6 +539,9 @@ pub fn get_default_value(r#type: &str) -> String {
         "REAL[3]" => "{0.0, 0.0, 0.0}",
         "REAL[4]" => "{0.0, 0.0, 0.0, 0.0}",
         "SMALLINT[4]" => "{0, 0, 0, 0}", // Assuming Color is a 4-component RGBA color
+
+        "JSONB" => "{}",
+        "HSTORE" => "''",
 
         _ => "NULL", // Default to NULL for unknown types
     }.to_string()
