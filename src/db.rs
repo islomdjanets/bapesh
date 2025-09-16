@@ -378,7 +378,26 @@ pub async fn generate_properties(schema: &JSON, pool: &sqlx::Pool<sqlx::Postgres
                     JSON::Array(arr) => {
                         let arr_str: Vec<String> = arr.iter().map(|v| {
                             if v.is_string() {
-                                format!("'{}'", v.as_str().unwrap_or("").replace("'", "''"))
+                                let value = v.as_str().unwrap_or("");
+                                if value.starts_with("Vector") {
+                                    let dimensions = value[6..].parse::<u8>().unwrap_or(2);
+                                    println!("Vector's dimensions for key {}: {}", key, dimensions);
+                                    // retrieve values from inside Vector3(these are comma separated)
+                                    let value = &value[7..value.len()-1]; // Get inside the parentheses
+                                    let values = format!("'{{{}}}'", value);
+                                    // let values = format!("'{{{}}}'", "0.0".repeat(dimensions as usize).chars().collect::<Vec<char>>().chunks(2).map(|c| c.iter().collect::<String>()).collect::<Vec<String>>().join(", "));
+                                    println!("Vector default value for key {}: {}", key, values);
+                                    values
+                                }
+                                else if value.starts_with("Color") {
+                                    let value = &value[6..value.len()-1]; // Get inside the parentheses
+                                    let values = format!("'{{{}}}'", value);
+                                    println!("Color default value for key {}: {}", key, values);
+                                    values
+                                }
+                                 else {
+                                    format!("\"{}\"", value.replace("'", "\""))
+                                }
                             } else if v.is_null() {
                                 "NULL".to_string()
                             } else {
@@ -441,7 +460,7 @@ pub async fn generate_properties(schema: &JSON, pool: &sqlx::Pool<sqlx::Postgres
 
                 let sql_type = get_sql_type(inner_type, pool).await;
                 if default_value == "NULL" {
-                    default_value = "{{}}".to_string(); // Empty array
+                    default_value = "{}".to_string(); // Empty array
                 }
                 //  else if !default_value.starts_with('{') {
                 //     default_value = format!("{{{}}}", default_value); // Wrap in array braces if not already
@@ -514,7 +533,14 @@ pub async fn generate_properties(schema: &JSON, pool: &sqlx::Pool<sqlx::Postgres
                 let sql_type = get_sql_type(value, pool).await;
                 let default_value = get_default_value(&sql_type);
                 // properties.push_str(&format!("{} {} DEFAULT {} {} {}, ", key, sql_type, default_value, if is_nullable { "" } else { "NOT NULL" }, if is_primary_key { "PRIMARY KEY" } else { "" }));
-                properties.push_str(&format!("{} {} DEFAULT {} {}, ", key, sql_type, default_value, if is_primary_key { "PRIMARY KEY" } else { "" }));
+
+                if is_primary_key {
+                    // properties.push_str(&format!("{} {} BIGSERIAL PRIMARY KEY, ", key, sql_type));
+                    properties.push_str(&format!("{} BIGSERIAL PRIMARY KEY, ", key));
+                }
+                else {
+                    properties.push_str(&format!("{} {} DEFAULT {}, ", key, sql_type, default_value));
+                }
             }
         }
     }
@@ -535,13 +561,14 @@ pub fn get_default_value(r#type: &str) -> String {
         "TIMESTAMP WITHOUT TIME ZONE" => "CURRENT_TIMESTAMP",
         "DATE" => "CURRENT_DATE",
         "TIME" => "CURRENT_TIME",
+        
+        "REAL[2]" => "'{0.0, 0.0}'",
+        "REAL[3]" => "'{0.0, 0.0, 0.0}'",
+        "REAL[4]" => "'{0.0, 0.0, 0.0, 0.0}'",
+        "SMALLINT[4]" => "'{0, 0, 0, 0}'", // Assuming Color is a 4-component RGBA color
 
-        "REAL[2]" => "{0.0, 0.0}",
-        "REAL[3]" => "{0.0, 0.0, 0.0}",
-        "REAL[4]" => "{0.0, 0.0, 0.0, 0.0}",
-        "SMALLINT[4]" => "{0, 0, 0, 0}", // Assuming Color is a 4-component RGBA color
-
-        "JSONB" => "{}",
+        "ARRAY" => "'{}'",
+        "JSONB" => "'{}'",
         "HSTORE" => "''",
 
         _ => "NULL", // Default to NULL for unknown types
