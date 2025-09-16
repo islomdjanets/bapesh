@@ -1,3 +1,5 @@
+use std::default;
+
 // use anyhow::Ok;
 use sqlx::{pool, postgres::{PgPoolOptions, PgQueryResult, PgTypeInfo, PgValueRef}, Connection, Decode, Postgres, Row, TypeInfo, ValueRef};
 // use sqlx::postgres::type_info::PgTypeInfo;
@@ -361,11 +363,46 @@ pub async fn generate_properties(schema: &JSON, pool: &sqlx::Pool<sqlx::Postgres
 
             // println!("Processing key: {}, value: {:?}", key, value);
 
+            let mut default_value = "NULL".to_string();
             if value.is_object() {
                 let info = value.as_object().unwrap();
                 value = info.get("type").unwrap_or(value);
-                // let description = info.get("description").unwrap_or(&JSON::Null);
-                // let default = info.get("default").unwrap_or(&JSON::Null);
+                let description = info.get("description").unwrap_or(&JSON::Null);
+                let default = info.get("default").unwrap_or(&JSON::Null);
+                default_value = match default {
+                    JSON::String(s) => format!("'{}'", s.replace("'", "''")),
+                    JSON::Number(n) => format!("{}", n),
+                    JSON::Bool(b) => format!("{}", b),
+                    JSON::Null => "NULL".to_string(),
+                    JSON::Array(arr) => {
+                        let arr_str: Vec<String> = arr.iter().map(|v| {
+                            if v.is_string() {
+                                format!("'{}'", v.as_str().unwrap_or("").replace("'", "''"))
+                            } else if v.is_null() {
+                                "NULL".to_string()
+                            } else {
+                                format!("{}", v)
+                            }
+                        }).collect();
+                        format!("{{{}}}", arr_str.join(", "))
+                    },
+                    JSON::Object(obj) => {
+                        // Complex default values not handled
+                        println!("Warning: Complex default value for key {} not handled", key);
+                        "NULL".to_string()
+                    },
+                };
+                println!("Default value for {}: {}", key, default_value);
+                // if !default.is_null() {
+                //     if default.is_string() {
+                //         default_value = format!("'{}'", default.as_str().unwrap_or("").replace("'", "''"));
+                //     } else {
+                //         default_value = format!("{}", default);
+                //     }
+                //     println!("Default value for {}: {}", key, default_value);
+                // }
+
+                println!("Property: {}, Type: {}, Description: {}, Default: {}", key, value, description, default);
 
                 // println!("Value is an object. Type: {:?}", value);
             }
@@ -401,7 +438,13 @@ pub async fn generate_properties(schema: &JSON, pool: &sqlx::Pool<sqlx::Postgres
                 }
 
                 let sql_type = get_sql_type(inner_type, pool).await;
-                properties.push_str(&format!("{} {}[] DEFAULT '{{}}', ", key, sql_type));
+                if default_value == "NULL" {
+                    default_value = "".to_string(); // Empty array
+                }
+                //  else if !default_value.starts_with('{') {
+                //     default_value = format!("{{{}}}", default_value); // Wrap in array braces if not already
+                // }
+                properties.push_str(&format!("{} {}[] DEFAULT '{}', ", key, sql_type, default_value));
                 continue;
                 // array type
 
