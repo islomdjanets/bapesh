@@ -282,14 +282,16 @@ pub async fn get_from_table(name: &str, id: i64, pool: &sqlx::Pool<sqlx::Postgre
     }
 }
 
-pub async fn insert_into_table(name: &str, values: &JSON, pool: &sqlx::Pool<sqlx::Postgres>) -> Result<PgQueryResult, StdError> {
+pub async fn insert_into_table(name: &str, values: &JSON, pool: &sqlx::Pool<sqlx::Postgres>) -> Result<JSON, StdError> {
     let (keys, values) = generate_values(values);
 
     println!("Inserting into table: {}", name);
     println!("Keys: {}", keys);
     println!("Values: {}", values);
 
-    let query = &format!("INSERT INTO {} ({}) VALUES ({})", name, keys, values);
+    // use RETURNING * to get the inserted row
+    // or RETURNING id to get the inserted id
+    let query = &format!("INSERT INTO {} ({}) VALUES ({}) RETURNING *", name, keys, values);
     println!("Insert query: {}", query);
 
     // Here you would typically bind the values to the query
@@ -298,16 +300,35 @@ pub async fn insert_into_table(name: &str, values: &JSON, pool: &sqlx::Pool<sqlx
         .execute(pool)
         .await;
 
-    if result.is_err() {
-        println!("Error inserting into table: {:?}", result.as_ref().err());
-        return result.map_err(|e| Box::new(e) as StdError);
+    // let row: JSON = query_builder
+    //     .fetch_one(pool)
+    //     .await?
+    //     .try_into()?;
+    let query = sqlx::query(query);
+    let row = query
+        .fetch_one(pool)
+        .await?;
+
+    // Manually convert the row to JSON
+    let mut obj = serde_json::Map::new();
+    for column in row.columns() {
+        let col_name = column.name();
+        let value: Result<JSON, _> = row.try_get_unchecked(col_name);
+        if let Ok(value) = value {
+            obj.insert(col_name.to_string(), value);
+        } else {
+            obj.insert(col_name.to_string(), JSON::Null);
+        }
     }
 
-    let result = result.unwrap();
+    if result.is_err() {
+        println!("Error inserting into table: {:?}", result.as_ref().err());
+        return Err(Box::new(result.unwrap_err()) as StdError);
+    }
 
-    println!("Rows affected: {}", result.rows_affected());
+    println!("Rows affected: {}", result.unwrap().rows_affected());
 
-    Ok(result)
+    Ok(JSON::Object(obj))
     // result.map_err(|e| Box::new(e) as StdError)
 }
 
