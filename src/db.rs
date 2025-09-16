@@ -25,7 +25,9 @@ pub async fn connect() -> Result<Pool, StdError> {
 
 pub async fn get_sql_type(r#type: &str, pool: &Pool) -> String {
     let std_type = match r#type {
-        "string" => "TEXT",
+        "Struct" | "struct" | "json" | "JSON" => "JSONB", // Use JSONB for arbitrary structs
+
+        "string" | "str" => "TEXT",
         "int" => "INTEGER",
         "float" => "REAL",
         "bool" => "BOOLEAN",
@@ -49,9 +51,9 @@ pub async fn get_sql_type(r#type: &str, pool: &Pool) -> String {
         //-- Insert data
         //INSERT INTO objects (position) VALUES (ROW(10.5, 20.3)::vector2);
 
-        "Vector2" | "vector2" => "REAL[2]",
-        "Vector3" | "vector3" => "REAL[3]",
-        "Vector4" | "vector4" => "REAL[4]",
+        "Vector2" | "vector2" | "vec2" | "Vec2" => "REAL[2]",
+        "Vector3" | "vector3" | "vec3" | "Vec3" => "REAL[3]",
+        "Vector4" | "vector4" | "vec4" | "Vec4" => "REAL[4]",
         "Color" | "color" => "SMALLINT[4]", // Assuming Color is a 4-component RGBA color
         //-- Insert data
         //INSERT INTO objects (position) VALUES (ARRAY[10.5, 20.3]::REAL[]);
