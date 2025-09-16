@@ -380,18 +380,18 @@ pub async fn generate_properties(schema: &JSON, pool: &sqlx::Pool<sqlx::Postgres
                             if v.is_string() {
                                 let value = v.as_str().unwrap_or("");
                                 if value.starts_with("Vector") {
-                                    let dimensions = value[6..].parse::<u8>().unwrap_or(2);
+                                    let dimensions = value[7..].parse::<u8>().unwrap_or(2);
                                     println!("Vector's dimensions for key {}: {}", key, dimensions);
                                     // retrieve values from inside Vector3(these are comma separated)
-                                    let value = &value[7..value.len()-1]; // Get inside the parentheses
-                                    let values = format!("'{{{}}}'", value);
+                                    let value = &value[8..value.len()-1]; // Get inside the parentheses
+                                    let values = format!("{{{}}}", value);
                                     // let values = format!("'{{{}}}'", "0.0".repeat(dimensions as usize).chars().collect::<Vec<char>>().chunks(2).map(|c| c.iter().collect::<String>()).collect::<Vec<String>>().join(", "));
                                     println!("Vector default value for key {}: {}", key, values);
                                     values
                                 }
                                 else if value.starts_with("Color") {
-                                    let value = &value[6..value.len()-1]; // Get inside the parentheses
-                                    let values = format!("'{{{}}}'", value);
+                                    let value = &value[7..value.len()-1]; // Get inside the parentheses
+                                    let values = format!("{{{}}}", value);
                                     println!("Color default value for key {}: {}", key, values);
                                     values
                                 }
