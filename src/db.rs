@@ -169,11 +169,13 @@ pub async fn get_from_table(name: &str, id: i64, pool: &sqlx::Pool<sqlx::Postgre
                             println!("Decoding array type");
                             // Decode to Vec<String> (native for text[]; adjust for other elem types)
                             // For empty: vec![], for non-empty: vec!["item1", "item2"]
-                            if type_oid == Some(1020) {
+                            if type_oid == Some(1021) || type_oid == Some(1020) {
                                 // REAL[]
+                                // FLOAT4[] rust type is f32
                                 match <Vec<f32> as Decode<Postgres>>::decode(raw.clone()) {
                                     Ok(arr) => json!(arr),
                                     Err(_) => {
+                                        println!("Falling back to text decode for REAL[], {} {}", type_oid.unwrap_or(0), type_name);
                                         let arr_str: &str = <&str as Decode<Postgres>>::decode(raw).unwrap_or("[]");
                                         serde_json::from_str(arr_str).unwrap_or_else(|_| json!([]))
                                     }
