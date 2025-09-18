@@ -152,19 +152,20 @@ pub async fn get_from_table(name: &str, id: i64, pool: &sqlx::Pool<sqlx::Postgre
                             let num: i64 = <i64 as Decode<Postgres>>::decode(raw).unwrap_or(0);
                             json!(num)
                         }
+                        //REAL[]
                         // REAL[][]
-                        Some(1021) => {
-                            println!("Decoding 2D float array");
-                            match <Vec<Vec<f32>> as Decode<Postgres>>::decode(raw.clone()) {
-                                Ok(arr) => json!(arr),
-                                Err(_) => {
-                                    let arr_str: &str = <&str as Decode<Postgres>>::decode(raw).unwrap_or("[]");
-                                    serde_json::from_str(arr_str).unwrap_or_else(|_| json!([]))
-                                }
-                            }
-                        }
+                        // Some(1021) => {
+                        //     println!("Decoding 2D float array");
+                        //     match <Vec<Vec<f32>> as Decode<Postgres>>::decode(raw.clone()) {
+                        //         Ok(arr) => json!(arr),
+                        //         Err(_) => {
+                        //             let arr_str: &str = <&str as Decode<Postgres>>::decode(raw).unwrap_or("[]");
+                        //             serde_json::from_str(arr_str).unwrap_or_else(|_| json!([]))
+                        //         }
+                        //     }
+                        // }
                         // Array types (examples: TEXT[]=1009, INT4[]=1007, etc.)
-                        Some(1009) | Some(1000) | Some(1007) | Some(1014) | Some(1015) | Some(1016) | Some(1005) => {
+                        Some(1009) | Some(1000) | Some(1007) | Some(1014) | Some(1015) | Some(1016) | Some(1005) | Some(1020) => {
                             println!("Decoding array type");
                             // Decode to Vec<String> (native for text[]; adjust for other elem types)
                             // For empty: vec![], for non-empty: vec!["item1", "item2"]
