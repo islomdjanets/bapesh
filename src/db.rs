@@ -438,7 +438,9 @@ pub async fn generate_properties(schema: &JSON, pool: &sqlx::Pool<sqlx::Postgres
                             if v.is_string() {
                                 let value = v.as_str().unwrap_or("");
                                 if value.starts_with("Vector") {
-                                    let dimensions = value[7..].parse::<u8>().unwrap_or(2);
+                                    let dims = value.chars().nth(6).unwrap().to_digit(10).unwrap_or(0); // Get the character after "Vector"
+                                    println!("Value is a Vector: {} with dimensions of {}", value, dims);
+                                    let dimensions = dims;
                                     println!("Vector's dimensions for key {}: {}", key, dimensions);
                                     // retrieve values from inside Vector3(these are comma separated)
                                     let value = &value[8..value.len()-1]; // Get inside the parentheses
@@ -635,7 +637,7 @@ pub fn get_default_value(r#type: &str) -> String {
 
 pub async fn create_table(name: &str, schema: &JSON, pool: &sqlx::Pool<sqlx::Postgres>) -> Result<(), StdError> {
     let properties = generate_properties(schema, pool).await;
-    println!("Properties: {}", properties);
+    println!("Table: {} Properties: {}", name, properties);
 
     let query = &format!("CREATE TABLE {} ({});", name, properties);
     // println!("Create table query: {}", query);
