@@ -169,7 +169,17 @@ pub async fn get_from_table(name: &str, id: i64, pool: &sqlx::Pool<sqlx::Postgre
                             println!("Decoding array type");
                             // Decode to Vec<String> (native for text[]; adjust for other elem types)
                             // For empty: vec![], for non-empty: vec!["item1", "item2"]
-                            if type_oid == Some(1016) {
+                            if type_oid == Some(1020) {
+                                // REAL[]
+                                match <Vec<f32> as Decode<Postgres>>::decode(raw.clone()) {
+                                    Ok(arr) => json!(arr),
+                                    Err(_) => {
+                                        let arr_str: &str = <&str as Decode<Postgres>>::decode(raw).unwrap_or("[]");
+                                        serde_json::from_str(arr_str).unwrap_or_else(|_| json!([]))
+                                    }
+                                }
+                            }
+                            else if type_oid == Some(1016) {
                                 // BIGINT[]
                                 match <Vec<i64> as Decode<Postgres>>::decode(raw.clone()) {
                                     Ok(arr) => json!(arr),
