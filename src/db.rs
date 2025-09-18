@@ -165,7 +165,7 @@ pub async fn get_from_table(name: &str, id: i64, pool: &sqlx::Pool<sqlx::Postgre
                         //     }
                         // }
                         // Array types (examples: TEXT[]=1009, INT4[]=1007, etc.)
-                        Some(1009) | Some(1000) | Some(1007) | Some(1014) | Some(1015) | Some(1016) | Some(1005) | Some(1020) => {
+                        Some(1009) | Some(1000) | Some(1007) | Some(1014) | Some(1015) | Some(1016) | Some(1005) | Some(1020) | Some(1021) => {
                             println!("Decoding array type");
                             // Decode to Vec<String> (native for text[]; adjust for other elem types)
                             // For empty: vec![], for non-empty: vec!["item1", "item2"]
@@ -450,9 +450,9 @@ pub async fn generate_properties(schema: &JSON, pool: &sqlx::Pool<sqlx::Postgres
                                 let value = v.as_str().unwrap_or("");
                                 if value.starts_with("Vector") {
                                     let dims = value.chars().nth(6).unwrap().to_digit(10).unwrap_or(0); // Get the character after "Vector"
-                                    println!("Value is a Vector: {} with dimensions of {}", value, dims);
-                                    let dimensions = dims;
-                                    println!("Vector's dimensions for key {}: {}", key, dimensions);
+                                    // println!("Value is a Vector: {} with dimensions of {}", value, dims);
+                                    // let dimensions = dims;
+                                    // println!("Vector's dimensions for key {}: {}", key, dimensions);
                                     // retrieve values from inside Vector3(these are comma separated)
                                     let value = &value[8..value.len()-1]; // Get inside the parentheses
                                     let values = format!("{}", value);
