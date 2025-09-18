@@ -53,10 +53,10 @@ pub async fn get_sql_type(r#type: &str, is_array: bool) -> String {
         //-- Insert data
         //INSERT INTO objects (position) VALUES (ROW(10.5, 20.3)::vector2);
 
-        "Vector2" | "vector2" | "vec2" | "Vec2" => if is_array { "REAL[]" } else { "REAL[2]" },
-        "Vector3" | "vector3" | "vec3" | "Vec3" => if is_array { "REAL[]" } else { "REAL[3]" },
-        "Vector4" | "vector4" | "vec4" | "Vec4" => if is_array { "REAL[]" } else { "REAL[4]" },
-        "Color" | "color" => if is_array { "SMALLINT[]" } else { "SMALLINT[4]" }, // Assuming Color is a 4-component RGBA color
+        "Vector2" | "vector2" | "vec2" | "Vec2" => if is_array { "REAL" } else { "REAL[2]" },
+        "Vector3" | "vector3" | "vec3" | "Vec3" => if is_array { "REAL" } else { "REAL[3]" },
+        "Vector4" | "vector4" | "vec4" | "Vec4" => if is_array { "REAL" } else { "REAL[4]" },
+        "Color" | "color" => if is_array { "SMALLINT[]" } else { "SMALLINT" }, // Assuming Color is a 4-component RGBA color
         //-- Insert data
         //INSERT INTO objects (position) VALUES (ARRAY[10.5, 20.3]::REAL[]);
 
@@ -444,14 +444,14 @@ pub async fn generate_properties(schema: &JSON, pool: &sqlx::Pool<sqlx::Postgres
                                     println!("Vector's dimensions for key {}: {}", key, dimensions);
                                     // retrieve values from inside Vector3(these are comma separated)
                                     let value = &value[8..value.len()-1]; // Get inside the parentheses
-                                    let values = format!("{{{}}}", value);
+                                    let values = format!("{}", value);
                                     // let values = format!("'{{{}}}'", "0.0".repeat(dimensions as usize).chars().collect::<Vec<char>>().chunks(2).map(|c| c.iter().collect::<String>()).collect::<Vec<String>>().join(", "));
                                     println!("Vector default value for key {}: {}", key, values);
                                     values
                                 }
                                 else if value.starts_with("Color") {
                                     let value = &value[7..value.len()-1]; // Get inside the parentheses
-                                    let values = format!("{{{}}}", value);
+                                    let values = format!("{}", value);
                                     println!("Color default value for key {}: {}", key, values);
                                     values
                                 }
