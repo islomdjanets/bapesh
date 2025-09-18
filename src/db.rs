@@ -25,7 +25,7 @@ pub async fn connect() -> Result<Pool, StdError> {
     Ok(pool)
 }
 
-pub async fn get_sql_type(r#type: &str, pool: &Pool) -> String {
+pub async fn get_sql_type(r#type: &str, is_array: bool) -> String {
     let std_type = match r#type {
         "Struct" | "struct" | "json" | "JSON" => "JSONB", // Use JSONB for arbitrary structs
 
@@ -53,10 +53,10 @@ pub async fn get_sql_type(r#type: &str, pool: &Pool) -> String {
         //-- Insert data
         //INSERT INTO objects (position) VALUES (ROW(10.5, 20.3)::vector2);
 
-        "Vector2" | "vector2" | "vec2" | "Vec2" => "REAL[2]",
-        "Vector3" | "vector3" | "vec3" | "Vec3" => "REAL[3]",
-        "Vector4" | "vector4" | "vec4" | "Vec4" => "REAL[4]",
-        "Color" | "color" => "SMALLINT[4]", // Assuming Color is a 4-component RGBA color
+        "Vector2" | "vector2" | "vec2" | "Vec2" => if is_array { "REAL[]" } else { "REAL[2]" },
+        "Vector3" | "vector3" | "vec3" | "Vec3" => if is_array { "REAL[]" } else { "REAL[3]" },
+        "Vector4" | "vector4" | "vec4" | "Vec4" => if is_array { "REAL[]" } else { "REAL[4]" },
+        "Color" | "color" => if is_array { "SMALLINT[]" } else { "SMALLINT[4]" }, // Assuming Color is a 4-component RGBA color
         //-- Insert data
         //INSERT INTO objects (position) VALUES (ARRAY[10.5, 20.3]::REAL[]);
 
@@ -151,6 +151,17 @@ pub async fn get_from_table(name: &str, id: i64, pool: &sqlx::Pool<sqlx::Postgre
                         Some(20) => {
                             let num: i64 = <i64 as Decode<Postgres>>::decode(raw).unwrap_or(0);
                             json!(num)
+                        }
+                        // REAL[][]
+                        Some(1021) => {
+                            println!("Decoding 2D float array");
+                            match <Vec<Vec<f32>> as Decode<Postgres>>::decode(raw.clone()) {
+                                Ok(arr) => json!(arr),
+                                Err(_) => {
+                                    let arr_str: &str = <&str as Decode<Postgres>>::decode(raw).unwrap_or("[]");
+                                    serde_json::from_str(arr_str).unwrap_or_else(|_| json!([]))
+                                }
+                            }
                         }
                         // Array types (examples: TEXT[]=1009, INT4[]=1007, etc.)
                         Some(1009) | Some(1000) | Some(1007) | Some(1014) | Some(1015) | Some(1016) | Some(1005) => {
@@ -505,7 +516,7 @@ pub async fn generate_properties(schema: &JSON, pool: &sqlx::Pool<sqlx::Postgres
                     continue;
                 }
 
-                let sql_type = get_sql_type(inner_type, pool).await;
+                let sql_type = get_sql_type(inner_type, true).await;
                 if default_value == "NULL" {
                     default_value = "{}".to_string(); // Empty array
                 }
@@ -528,7 +539,7 @@ pub async fn generate_properties(schema: &JSON, pool: &sqlx::Pool<sqlx::Postgres
 
                     // println!("Set: {}", inner_type);
 
-                    let sql_type = get_sql_type(inner_type, pool).await;
+                    let sql_type = get_sql_type(inner_type, false).await;
                     properties.push_str(&format!("{} {}[] DEFAULT '{{}}', ", key, sql_type));
                     continue;
                 }
@@ -577,7 +588,7 @@ pub async fn generate_properties(schema: &JSON, pool: &sqlx::Pool<sqlx::Postgres
 
                 properties.push_str(&format!("{} {} REFERENCES {}({}), ", key, sql_type, table, property));
             } else {
-                let sql_type = get_sql_type(value, pool).await;
+                let sql_type = get_sql_type(value, false).await;
                 let default_value = get_default_value(&sql_type);
                 // properties.push_str(&format!("{} {} DEFAULT {} {} {}, ", key, sql_type, default_value, if is_nullable { "" } else { "NOT NULL" }, if is_primary_key { "PRIMARY KEY" } else { "" }));
 
