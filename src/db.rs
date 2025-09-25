@@ -1,7 +1,7 @@
 use std::default;
 
 // use anyhow::Ok;
-use sqlx::{pool, postgres::{PgPoolOptions, PgQueryResult, PgTypeInfo, PgValueRef}, Connection, Decode, Postgres, Row, TypeInfo, ValueRef};
+use sqlx::{pool, postgres::{PgPoolOptions, PgQueryResult, PgRow, PgTypeInfo, PgValueRef}, Connection, Decode, Postgres, Row, TypeInfo, ValueRef};
 // use sqlx::postgres::type_info::PgTypeInfo;
 use sqlx::Column;
 use crate::json::JSON;
@@ -118,192 +118,201 @@ pub async fn get_from_table(name: &str, id: i64, pool: &sqlx::Pool<sqlx::Postgre
     if let Ok(row) = row {
         // let json: JSON = row.try_get("data")?; // Assuming the column is named 'data'
         // Ok(Some(json))
+        let json = row_to_json(&row);
+        if json.is_none() {
+            println!("Error converting row to JSON");
+            return Ok(None);
+        }
+        return Ok(Some(json.unwrap()));
 
-        println!("Row: {:?}", row);
-        let mut obj = serde_json::Map::new();
-        for column in row.columns() {
-            let col_name = column.name();
-            // println!("Column: {}", col_name);
+    } else {
+        println!("No row found with id: {} {}", id, row.err().unwrap());
+        Ok(None)
+    }
+}
 
-            // Get raw value to inspect type without decoding
-            let raw_value = row.try_get_raw(col_name);
-            match raw_value {
-                Ok(raw) => {
-                    if raw.is_null() {
-                        obj.insert(col_name.to_string(), JSON::Null);
-                        continue;
+pub fn row_to_json(row: &PgRow) -> Option<JSON> {
+    println!("Row: {:?}", row);
+    let mut obj = serde_json::Map::new();
+    for column in row.columns() {
+        let col_name = column.name();
+        // println!("Column: {}", col_name);
+
+        // Get raw value to inspect type without decoding
+        let raw_value = row.try_get_raw(col_name);
+        match raw_value {
+            Ok(raw) => {
+                if raw.is_null() {
+                    obj.insert(col_name.to_string(), JSON::Null);
+                    continue;
+                }
+
+                // Get type info
+                let type_info = raw.type_info();
+                let type_oid = type_info.oid().map(|oid| oid.0 as u32);  // OID via public oid() method
+                let type_name = type_info.name();  // String like "int8", "text[]", "timestamptz"
+
+                println!("Decoding type: OID={} Name={}", type_oid.unwrap_or(0), type_name);
+
+                // Dispatch based on OID (primary) or fallback to name matching
+                let value = match type_oid {
+                    // JSON/JSONB OIDs
+                    Some(114) | Some(3802) => {
+                        <JSON as Decode<Postgres>>::decode(raw).unwrap_or(JSON::Null)
                     }
-
-                    // Get type info
-                    let type_info = raw.type_info();
-                    let type_oid = type_info.oid().map(|oid| oid.0 as u32);  // OID via public oid() method
-                    let type_name = type_info.name();  // String like "int8", "text[]", "timestamptz"
-
-                    println!("Decoding type: OID={} Name={}", type_oid.unwrap_or(0), type_name);
-
-                    // Dispatch based on OID (primary) or fallback to name matching
-                    let value = match type_oid {
-                        // JSON/JSONB OIDs
-                        Some(114) | Some(3802) => {
-                            <JSON as Decode<Postgres>>::decode(raw).unwrap_or(JSON::Null)
+                    // BIGINT/INT8 OID
+                    Some(20) => {
+                        let num: i64 = <i64 as Decode<Postgres>>::decode(raw).unwrap_or(0);
+                        json!(num)
+                    }
+                    //REAL[]
+                    // REAL[][]
+                    // Some(1021) => {
+                    //     println!("Decoding 2D float array");
+                    //     match <Vec<Vec<f32>> as Decode<Postgres>>::decode(raw.clone()) {
+                    //         Ok(arr) => json!(arr),
+                    //         Err(_) => {
+                    //             let arr_str: &str = <&str as Decode<Postgres>>::decode(raw).unwrap_or("[]");
+                    //             serde_json::from_str(arr_str).unwrap_or_else(|_| json!([]))
+                    //         }
+                    //     }
+                    // }
+                    // Array types (examples: TEXT[]=1009, INT4[]=1007, etc.)
+                    Some(1009) | Some(1000) | Some(1007) | Some(1014) | Some(1015) | Some(1016) | Some(1005) | Some(1020) | Some(1021) => {
+                        println!("Decoding array type");
+                        // Decode to Vec<String> (native for text[]; adjust for other elem types)
+                        // For empty: vec![], for non-empty: vec!["item1", "item2"]
+                        if type_oid == Some(1021) || type_oid == Some(1020) {
+                            // REAL[]
+                            // FLOAT4[] rust type is f32
+                            match <Vec<f32> as Decode<Postgres>>::decode(raw.clone()) {
+                                Ok(arr) => json!(arr),
+                                Err(_) => {
+                                    println!("Falling back to text decode for REAL[], {} {}", type_oid.unwrap_or(0), type_name);
+                                    let arr_str: &str = <&str as Decode<Postgres>>::decode(raw).unwrap_or("[]");
+                                    serde_json::from_str(arr_str).unwrap_or_else(|_| json!([]))
+                                }
+                            }
                         }
-                        // BIGINT/INT8 OID
-                        Some(20) => {
+                        else if type_oid == Some(1016) {
+                            // BIGINT[]
+                            match <Vec<i64> as Decode<Postgres>>::decode(raw.clone()) {
+                                Ok(arr) => json!(arr),
+                                Err(_) => {
+                                    let arr_str: &str = <&str as Decode<Postgres>>::decode(raw).unwrap_or("[]");
+                                    serde_json::from_str(arr_str).unwrap_or_else(|_| json!([]))
+                                }
+                            }
+                        } else if type_oid == Some(1007) {
+                            // INT4[]
+                            match <Vec<i32> as Decode<Postgres>>::decode(raw.clone()) {
+                                Ok(arr) => json!(arr),
+                                Err(_) => {
+                                    let arr_str: &str = <&str as Decode<Postgres>>::decode(raw).unwrap_or("[]");
+                                    serde_json::from_str(arr_str).unwrap_or_else(|_| json!([]))
+                                }
+                            }
+                        } else if type_oid == Some(1005) {
+
+                            // SMALLINT[]
+                            match <Vec<i16> as Decode<Postgres>>::decode(raw.clone()) {
+                                Ok(arr) => json!(arr),
+                                Err(_) => {
+                                    let arr_str: &str = <&str as Decode<Postgres>>::decode(raw).unwrap_or("[]");
+                                    serde_json::from_str(arr_str).unwrap_or_else(|_| json!([]))
+                                }
+                            }
+                        } else if type_oid == Some(1000) {
+                            // BOOL[]
+                            match <Vec<bool> as Decode<Postgres>>::decode(raw.clone()) {
+                                Ok(arr) => json!(arr),
+                                Err(_) => {
+                                    let arr_str: &str = <&str as Decode<Postgres>>::decode(raw).unwrap_or("[]");
+                                    serde_json::from_str(arr_str).unwrap_or_else(|_| json!([]))
+                                }
+                            }
+                        } else {
+                            match <Vec<String> as Decode<Postgres>>::decode(raw.clone()) {
+                                Ok(arr) => json!(arr),  // Converts Vec<String> to JSON array
+                                Err(_) => {
+                                    // Fallback: text decode + parse (for edge cases)
+                                    let arr_str: &str = <&str as Decode<Postgres>>::decode(raw).unwrap_or("[]");
+                                    serde_json::from_str(arr_str).unwrap_or_else(|_| json!([]))
+                                }
+                            }
+                        }
+                    }
+                    // TIMESTAMPTZ OID (1184)
+                    Some(1184) => {
+                        // Requires sqlx "chrono" feature
+                        use chrono::{DateTime, Utc};
+                        match <DateTime<Utc> as Decode<Postgres>>::decode(raw) {
+                            Ok(dt) => json!(dt.to_rfc3339()),
+                            Err(_) => json!(null),
+                        }
+                    }
+                    // TEXT/VARCHAR OIDs (25, 1043)
+                    Some(25) | Some(1043) => {
+                        let s: &str = <&str as Decode<Postgres>>::decode(raw).unwrap_or("");
+                        json!(s)
+                    }
+                    // Fallback: Use type_name for unknown OIDs
+                    _ => match type_name.to_lowercase().as_str() {
+                        "int8" | "bigint" => {
                             let num: i64 = <i64 as Decode<Postgres>>::decode(raw).unwrap_or(0);
                             json!(num)
                         }
-                        //REAL[]
-                        // REAL[][]
-                        // Some(1021) => {
-                        //     println!("Decoding 2D float array");
-                        //     match <Vec<Vec<f32>> as Decode<Postgres>>::decode(raw.clone()) {
-                        //         Ok(arr) => json!(arr),
-                        //         Err(_) => {
-                        //             let arr_str: &str = <&str as Decode<Postgres>>::decode(raw).unwrap_or("[]");
-                        //             serde_json::from_str(arr_str).unwrap_or_else(|_| json!([]))
-                        //         }
-                        //     }
-                        // }
-                        // Array types (examples: TEXT[]=1009, INT4[]=1007, etc.)
-                        Some(1009) | Some(1000) | Some(1007) | Some(1014) | Some(1015) | Some(1016) | Some(1005) | Some(1020) | Some(1021) => {
-                            println!("Decoding array type");
-                            // Decode to Vec<String> (native for text[]; adjust for other elem types)
-                            // For empty: vec![], for non-empty: vec!["item1", "item2"]
-                            if type_oid == Some(1021) || type_oid == Some(1020) {
-                                // REAL[]
-                                // FLOAT4[] rust type is f32
-                                match <Vec<f32> as Decode<Postgres>>::decode(raw.clone()) {
-                                    Ok(arr) => json!(arr),
-                                    Err(_) => {
-                                        println!("Falling back to text decode for REAL[], {} {}", type_oid.unwrap_or(0), type_name);
-                                        let arr_str: &str = <&str as Decode<Postgres>>::decode(raw).unwrap_or("[]");
-                                        serde_json::from_str(arr_str).unwrap_or_else(|_| json!([]))
-                                    }
-                                }
-                            }
-                            else if type_oid == Some(1016) {
-                                // BIGINT[]
-                                match <Vec<i64> as Decode<Postgres>>::decode(raw.clone()) {
-                                    Ok(arr) => json!(arr),
-                                    Err(_) => {
-                                        let arr_str: &str = <&str as Decode<Postgres>>::decode(raw).unwrap_or("[]");
-                                        serde_json::from_str(arr_str).unwrap_or_else(|_| json!([]))
-                                    }
-                                }
-                            } else if type_oid == Some(1007) {
-                                // INT4[]
-                                match <Vec<i32> as Decode<Postgres>>::decode(raw.clone()) {
-                                    Ok(arr) => json!(arr),
-                                    Err(_) => {
-                                        let arr_str: &str = <&str as Decode<Postgres>>::decode(raw).unwrap_or("[]");
-                                        serde_json::from_str(arr_str).unwrap_or_else(|_| json!([]))
-                                    }
-                                }
-                            } else if type_oid == Some(1005) {
-
-                                // SMALLINT[]
-                                match <Vec<i16> as Decode<Postgres>>::decode(raw.clone()) {
-                                    Ok(arr) => json!(arr),
-                                    Err(_) => {
-                                        let arr_str: &str = <&str as Decode<Postgres>>::decode(raw).unwrap_or("[]");
-                                        serde_json::from_str(arr_str).unwrap_or_else(|_| json!([]))
-                                    }
-                                }
-                            } else if type_oid == Some(1000) {
-                                // BOOL[]
-                                match <Vec<bool> as Decode<Postgres>>::decode(raw.clone()) {
-                                    Ok(arr) => json!(arr),
-                                    Err(_) => {
-                                        let arr_str: &str = <&str as Decode<Postgres>>::decode(raw).unwrap_or("[]");
-                                        serde_json::from_str(arr_str).unwrap_or_else(|_| json!([]))
-                                    }
-                                }
-                            } else {
-                                match <Vec<String> as Decode<Postgres>>::decode(raw.clone()) {
-                                    Ok(arr) => json!(arr),  // Converts Vec<String> to JSON array
-                                    Err(_) => {
-                                        // Fallback: text decode + parse (for edge cases)
-                                        let arr_str: &str = <&str as Decode<Postgres>>::decode(raw).unwrap_or("[]");
-                                        serde_json::from_str(arr_str).unwrap_or_else(|_| json!([]))
-                                    }
-                                }
-                            }
-                        }
-                        // TIMESTAMPTZ OID (1184)
-                        Some(1184) => {
-                            // Requires sqlx "chrono" feature
+                        "timestamp with time zone" | "timestamptz" => {
                             use chrono::{DateTime, Utc};
                             match <DateTime<Utc> as Decode<Postgres>>::decode(raw) {
                                 Ok(dt) => json!(dt.to_rfc3339()),
                                 Err(_) => json!(null),
                             }
                         }
-                        // TEXT/VARCHAR OIDs (25, 1043)
-                        Some(25) | Some(1043) => {
-                            let s: &str = <&str as Decode<Postgres>>::decode(raw).unwrap_or("");
+                        "text[]" | "character varying[]" | "integer[]" | "int8[]" | "bigint[]" => {
+                            // Same Vec<String> decode for string arrays; for int[] use Vec<i32>
+                            match <Vec<String> as Decode<Postgres>>::decode(raw.clone()) {
+                                Ok(arr) => json!(arr),
+                                Err(_) => {
+                                    let arr_str: &str = <&str as Decode<Postgres>>::decode(raw).unwrap_or("[]");
+                                    serde_json::from_str(arr_str).unwrap_or_else(|_| json!([]))
+                                }
+                            }
+                        }
+                        "json" | "jsonb" => {
+                            <JSON as Decode<Postgres>>::decode(raw).unwrap_or(JSON::Null)
+                        }
+                        _ => {
+                            // Ultimate fallback: Try as string
+                            let s: &str = <&str as Decode<Postgres>>::decode(raw).unwrap_or("null");
                             json!(s)
                         }
-                        // Fallback: Use type_name for unknown OIDs
-                        _ => match type_name.to_lowercase().as_str() {
-                            "int8" | "bigint" => {
-                                let num: i64 = <i64 as Decode<Postgres>>::decode(raw).unwrap_or(0);
-                                json!(num)
-                            }
-                            "timestamp with time zone" | "timestamptz" => {
-                                use chrono::{DateTime, Utc};
-                                match <DateTime<Utc> as Decode<Postgres>>::decode(raw) {
-                                    Ok(dt) => json!(dt.to_rfc3339()),
-                                    Err(_) => json!(null),
-                                }
-                            }
-                            "text[]" | "character varying[]" | "integer[]" | "int8[]" | "bigint[]" => {
-                                // Same Vec<String> decode for string arrays; for int[] use Vec<i32>
-                                match <Vec<String> as Decode<Postgres>>::decode(raw.clone()) {
-                                    Ok(arr) => json!(arr),
-                                    Err(_) => {
-                                        let arr_str: &str = <&str as Decode<Postgres>>::decode(raw).unwrap_or("[]");
-                                        serde_json::from_str(arr_str).unwrap_or_else(|_| json!([]))
-                                    }
-                                }
-                            }
-                            "json" | "jsonb" => {
-                                <JSON as Decode<Postgres>>::decode(raw).unwrap_or(JSON::Null)
-                            }
-                            _ => {
-                                // Ultimate fallback: Try as string
-                                let s: &str = <&str as Decode<Postgres>>::decode(raw).unwrap_or("null");
-                                json!(s)
-                            }
-                        }
-                    };
-                    obj.insert(col_name.to_string(), value);
-                }
-                Err(e) => {
-                    println!("Error getting raw column {}: {:?}", col_name, e);
-                    obj.insert(col_name.to_string(), JSON::Null);
-                }
+                    }
+                };
+                obj.insert(col_name.to_string(), value);
+            }
+            Err(e) => {
+                println!("Error getting raw column {}: {:?}", col_name, e);
+                obj.insert(col_name.to_string(), JSON::Null);
             }
         }
-        // // get values from row
-        // let mut obj = serde_json::Map::new();
-        // for column in row.columns() {
-        //     let col_name = column.name();
-        //     println!("Column: {}", col_name);
-        //     let value: Result<JSON, _> = row.try_get_unchecked(col_name);
-        //     if let Ok(value) = value {
-        //         obj.insert(col_name.to_string(), value);
-        //     } else {
-        //         println!("Error getting column {}: {:?}", col_name, value.err());
-        //         obj.insert(col_name.to_string(), JSON::Null);
-        //     }
-        // }
-
-        println!("values: {:?}", obj);
-        Ok(Some(JSON::Object(obj)))
-    } else {
-        println!("No row found with id: {} {}", id, row.err().unwrap());
-        Ok(None)
     }
+    // // get values from row
+    // let mut obj = serde_json::Map::new();
+    // for column in row.columns() {
+    //     let col_name = column.name();
+    //     println!("Column: {}", col_name);
+    //     let value: Result<JSON, _> = row.try_get_unchecked(col_name);
+    //     if let Ok(value) = value {
+    //         obj.insert(col_name.to_string(), value);
+    //     } else {
+    //         println!("Error getting column {}: {:?}", col_name, value.err());
+    //         obj.insert(col_name.to_string(), JSON::Null);
+    //     }
+    // }
+
+    println!("values: {:?}", obj);
+    Some(JSON::Object(obj))
 }
 
 pub async fn insert_into_table_and_return_id(name: &str, values: &JSON, pool: &sqlx::Pool<sqlx::Postgres>) -> Result<i64, StdError> {
