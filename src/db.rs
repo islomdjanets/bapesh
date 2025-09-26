@@ -160,6 +160,20 @@ pub fn row_to_json(row: &PgRow) -> Option<JSON> {
                     Some(114) | Some(3802) => {
                         <JSON as Decode<Postgres>>::decode(raw).unwrap_or(JSON::Null)
                     }
+                    // INTEGER
+                    Some(23) => {
+                        let num: i32 = <i32 as Decode<Postgres>>::decode(raw).unwrap_or(0);
+                        json!(num)
+                    }
+                    // TIMESTAMP
+                    Some(1114) => {
+                        // Requires sqlx "chrono" feature
+                        use chrono::{NaiveDateTime};
+                        match <NaiveDateTime as Decode<Postgres>>::decode(raw) {
+                            Ok(dt) => json!(dt.format("%Y-%m-%dT%H:%M:%S").to_string()),
+                            Err(_) => json!(null),
+                        }
+                    }
                     // BIGINT/INT8 OID
                     Some(20) => {
                         let num: i64 = <i64 as Decode<Postgres>>::decode(raw).unwrap_or(0);
