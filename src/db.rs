@@ -165,6 +165,16 @@ pub fn row_to_json(row: &PgRow) -> Option<JSON> {
                         let num: i64 = <i64 as Decode<Postgres>>::decode(raw).unwrap_or(0);
                         json!(num)
                     }
+                    // u64/UINT8 OID
+                    Some(1700) | Some(701) => {
+                        let num: f64 = <f64 as Decode<Postgres>>::decode(raw).unwrap_or(0.0);
+                        json!(num as u64)
+                    }
+                    // FLOAT4/REAL OID
+                    Some(700) => {
+                        let num: f32 = <f32 as Decode<Postgres>>::decode(raw).unwrap_or(0.0);
+                        json!(num)
+                    }
                     //REAL[]
                     // REAL[][]
                     // Some(1021) => {
@@ -257,35 +267,39 @@ pub fn row_to_json(row: &PgRow) -> Option<JSON> {
                         json!(s)
                     }
                     // Fallback: Use type_name for unknown OIDs
-                    _ => match type_name.to_lowercase().as_str() {
-                        "int8" | "bigint" => {
-                            let num: i64 = <i64 as Decode<Postgres>>::decode(raw).unwrap_or(0);
-                            json!(num)
-                        }
-                        "timestamp with time zone" | "timestamptz" => {
-                            use chrono::{DateTime, Utc};
-                            match <DateTime<Utc> as Decode<Postgres>>::decode(raw) {
-                                Ok(dt) => json!(dt.to_rfc3339()),
-                                Err(_) => json!(null),
+                    _ => {
+                        println!("Unknown OID: {}, falling back to name match: {}", type_oid.unwrap_or(0), type_name);
+                        match type_name.to_lowercase().as_str() {
+                            "int8" | "bigint" => {
+                                let num: i64 = <i64 as Decode<Postgres>>::decode(raw).unwrap_or(0);
+                                json!(num)
                             }
-                        }
-                        "text[]" | "character varying[]" | "integer[]" | "int8[]" | "bigint[]" => {
-                            // Same Vec<String> decode for string arrays; for int[] use Vec<i32>
-                            match <Vec<String> as Decode<Postgres>>::decode(raw.clone()) {
-                                Ok(arr) => json!(arr),
-                                Err(_) => {
-                                    let arr_str: &str = <&str as Decode<Postgres>>::decode(raw).unwrap_or("[]");
-                                    serde_json::from_str(arr_str).unwrap_or_else(|_| json!([]))
+                            "timestamp with time zone" | "timestamptz" => {
+                                use chrono::{DateTime, Utc};
+                                match <DateTime<Utc> as Decode<Postgres>>::decode(raw) {
+                                    Ok(dt) => json!(dt.to_rfc3339()),
+                                    Err(_) => json!(null),
                                 }
                             }
-                        }
-                        "json" | "jsonb" => {
-                            <JSON as Decode<Postgres>>::decode(raw).unwrap_or(JSON::Null)
-                        }
-                        _ => {
-                            // Ultimate fallback: Try as string
-                            let s: &str = <&str as Decode<Postgres>>::decode(raw).unwrap_or("null");
-                            json!(s)
+                            "text[]" | "character varying[]" | "integer[]" | "int8[]" | "bigint[]" => {
+                                // Same Vec<String> decode for string arrays; for int[] use Vec<i32>
+                                match <Vec<String> as Decode<Postgres>>::decode(raw.clone()) {
+                                    Ok(arr) => json!(arr),
+                                    Err(_) => {
+                                        let arr_str: &str = <&str as Decode<Postgres>>::decode(raw).unwrap_or("[]");
+                                        serde_json::from_str(arr_str).unwrap_or_else(|_| json!([]))
+                                    }
+                                }
+                            }
+                            "json" | "jsonb" => {
+                                <JSON as Decode<Postgres>>::decode(raw).unwrap_or(JSON::Null)
+                            }
+                            _ => {
+                                // Ultimate fallback: Try as string
+                                println!("Fallback to string decode for type name: {}", type_name);
+                                let s: &str = <&str as Decode<Postgres>>::decode(raw).unwrap_or("null");
+                                json!(s)
+                            }
                         }
                     }
                 };
