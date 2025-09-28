@@ -953,6 +953,16 @@ pub async fn add_to_array(table: &str, column: &str, id: i64, value: &JSON, pool
     Ok(())
 }
 
+pub async fn add_number_to_array(table: &str, column: &str, id: i64, value: i64, pool: &sqlx::Pool<sqlx::Postgres>) -> Result<(), StdError> {
+    let query = &format!("UPDATE {} SET {} = array_append({}, $1::text::bigint) WHERE id = $2", table, column, column);
+    sqlx::query(query)
+        .bind(value)
+        .bind(id)
+        .execute(pool)
+        .await?;
+    Ok(())
+}
+
 pub async fn empty_jsonb(table: &str, column: &str, id: i64, pool: &sqlx::Pool<sqlx::Postgres>) -> Result<(), StdError> {
     let query = &format!("UPDATE {} SET {} = '{{}}'::JSONB WHERE id = $1", table, column);
     sqlx::query(query)
