@@ -132,7 +132,7 @@ pub async fn get_from_table(name: &str, id: i64, pool: &sqlx::Pool<sqlx::Postgre
 }
 
 pub fn row_to_json(row: &PgRow) -> Option<JSON> {
-    println!("Row: {:?}", row);
+    // println!("Row: {:?}", row);
     let mut obj = serde_json::Map::new();
     for column in row.columns() {
         let col_name = column.name();
@@ -152,7 +152,7 @@ pub fn row_to_json(row: &PgRow) -> Option<JSON> {
                 let type_oid = type_info.oid().map(|oid| oid.0 as u32);  // OID via public oid() method
                 let type_name = type_info.name();  // String like "int8", "text[]", "timestamptz"
 
-                println!("Decoding type: OID={} Name={}", type_oid.unwrap_or(0), type_name);
+                // println!("Decoding type: OID={} Name={}", type_oid.unwrap_or(0), type_name);
 
                 // Dispatch based on OID (primary) or fallback to name matching
                 let value = match type_oid {
@@ -203,7 +203,7 @@ pub fn row_to_json(row: &PgRow) -> Option<JSON> {
                     // }
                     // Array types (examples: TEXT[]=1009, INT4[]=1007, etc.)
                     Some(1009) | Some(1000) | Some(1007) | Some(1014) | Some(1015) | Some(1016) | Some(1005) | Some(1020) | Some(1021) => {
-                        println!("Decoding array type");
+                        // println!("Decoding array type");
                         // Decode to Vec<String> (native for text[]; adjust for other elem types)
                         // For empty: vec![], for non-empty: vec!["item1", "item2"]
                         if type_oid == Some(1021) || type_oid == Some(1020) {
@@ -347,7 +347,7 @@ pub async fn insert_into_table_and_return_id(name: &str, values: &JSON, pool: &s
     let (keys, values) = generate_values(values);
 
     let query = &format!("INSERT INTO {} ({}) VALUES ({}) RETURNING id", name, keys, values);
-    println!("Insert query: {}", query);
+    // println!("Insert query: {}", query);
 
     let query = sqlx::query(query);
     let id: i64 = query
