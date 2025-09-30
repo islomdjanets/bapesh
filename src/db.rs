@@ -441,7 +441,7 @@ pub fn generate_values(json: &JSON) -> (String, String) {
 
             keys.push_str(&format!("{}, ", key));
 
-            println!("Value type for key {}: {:?}", key, value);
+            // println!("Value type for key {}: {:?}", key, value);
             if value.is_string() {
                 let s = value.as_str().unwrap_or("");
                 values.push_str(&format!("'{}', ", s.replace("'", "''"))); // Escape single quotes
@@ -1170,7 +1170,13 @@ pub async fn get_table_schema(name: &str, pool: &sqlx::Pool<sqlx::Postgres>) -> 
 }
 
 pub async fn filter_by_value(table: &str, key: &str, value: &str, pool: &Pool) -> Result<Vec<JSON>, StdError> {
-    let query = &format!("SELECT * FROM {} WHERE {} = $1", table, key);
+    let cast = if value.parse::<i64>().is_ok() {
+        "bigint"
+    } else {
+        "text"
+    };
+
+    let query = &format!("SELECT * FROM {} WHERE {} = $1::{}", table, key, cast);
     let rows = sqlx::query(query)
         .bind(value)
         .fetch_all(pool)
