@@ -447,6 +447,7 @@ pub fn generate_values(json: &JSON) -> (String, String) {
             } else if value.is_null() {
                 values.push_str("NULL, ");
             } else if value.is_object() {
+                println!("value is and object: {}", value);
                 // For objects, store as JSONB
                 let s = value.to_string();
                 values.push_str(&format!("'{}'::JSONB, ", s.replace("'", "''"))); // Escape single quotes
