@@ -441,6 +441,7 @@ pub fn generate_values(json: &JSON) -> (String, String) {
 
             keys.push_str(&format!("{}, ", key));
 
+            println!("Value type for key {}: {:?}", key, value);
             if value.is_string() {
                 let s = value.as_str().unwrap_or("");
                 values.push_str(&format!("'{}', ", s.replace("'", "''"))); // Escape single quotes
