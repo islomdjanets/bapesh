@@ -1150,3 +1150,20 @@ pub async fn get_table_schema(name: &str, pool: &sqlx::Pool<sqlx::Postgres>) -> 
 
     Ok(JSON::Object(schema))
 }
+
+pub async fn filter_by_value(table: &str, key: &str, value: &str, pool: &Pool) -> Result<Vec<JSON>, StdError> {
+    let query = &format!("SELECT * FROM {} WHERE {} = $1", table, key);
+    let rows = sqlx::query(query)
+        .bind(value)
+        .fetch_all(pool)
+        .await?;
+
+    let mut results = Vec::new();
+    for row in rows {
+        if let Some(json) = row_to_json(&row) {
+            results.push(json);
+        }
+    }
+
+    Ok(results)
+}
