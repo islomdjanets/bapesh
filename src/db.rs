@@ -98,6 +98,26 @@ pub async fn remove_from_table(name: &str, id: i64, pool: &sqlx::Pool<sqlx::Post
     Ok(())
 }
 
+pub async fn get_from_table_new(name: &str, id: &str, pool: &sqlx::Pool<sqlx::Postgres>) -> Result<Option<JSON>, StdError> {
+    let query = &format!("SELECT * FROM {} WHERE id = $1", name);
+    let row = sqlx::query(query)
+        .bind(id)
+        .fetch_one(pool)
+        .await;
+
+    if let Ok(row) = row {
+        let json = row_to_json(&row);
+        if json.is_none() {
+            println!("Error converting row to JSON");
+            return Ok(None);
+        }
+        return Ok(Some(json.unwrap()));
+    } else {
+        println!("No row found with id: {} {}", id, row.err().unwrap());
+        Ok(None)
+    }
+}
+
 pub async fn get_from_table(name: &str, id: i64, pool: &sqlx::Pool<sqlx::Postgres>) -> Result<Option<JSON>, StdError> {
     let query = &format!("SELECT * FROM {} WHERE id = $1", name);
     let row = sqlx::query(query)
