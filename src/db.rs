@@ -1203,12 +1203,12 @@ pub async fn get_table_schema(name: &str, pool: &sqlx::Pool<sqlx::Postgres>) -> 
     Ok(JSON::Object(schema))
 }
 
-pub async fn filter_by_value(table: &str, key: &str, value: &str, pool: &Pool) -> Result<Vec<JSON>, StdError> {
-    let cast = if value.parse::<i64>().is_ok() {
-        "bigint"
-    } else {
-        "text"
-    };
+pub async fn filter_by_value(table: &str, key: &str, value: &str, cast: &str, pool: &Pool) -> Result<Vec<JSON>, StdError> {
+    // let cast = if value.parse::<i64>().is_ok() {
+    //     "bigint"
+    // } else {
+    //     "text"
+    // };
 
     let query = &format!("SELECT * FROM {} WHERE {} = $1::{}", table, key, cast);
     let rows = sqlx::query(query)
