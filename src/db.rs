@@ -359,7 +359,7 @@ pub fn row_to_json(row: &PgRow) -> Option<JSON> {
     //     }
     // }
 
-    println!("values: {:?}", obj);
+    // println!("values: {:?}", obj);
     Some(JSON::Object(obj))
 }
 
@@ -381,9 +381,9 @@ pub async fn insert_into_table_and_return_id(name: &str, values: &JSON, pool: &s
 pub async fn insert_into_table_and_return(name: &str, values: &JSON, pool: &sqlx::Pool<sqlx::Postgres>) -> Result<JSON, StdError> {
     let (keys, values) = generate_values(values);
 
-    println!("Inserting into table: {}", name);
-    println!("Keys: {}", keys);
-    println!("Values: {}", values);
+    // println!("Inserting into table: {}", name);
+    // println!("Keys: {}", keys);
+    // println!("Values: {}", values);
 
     // use RETURNING * to get the inserted row
     // or RETURNING id to get the inserted id
@@ -418,9 +418,9 @@ pub async fn insert_into_table_and_return(name: &str, values: &JSON, pool: &sqlx
 pub async fn insert_into_table(name: &str, values: &JSON, pool: &sqlx::Pool<sqlx::Postgres>) -> Result<(), StdError> {
     let (keys, values) = generate_values(values);
 
-    println!("Inserting into table: {}", name);
-    println!("Keys: {}", keys);
-    println!("Values: {}", values);
+    // println!("Inserting into table: {}", name);
+    // println!("Keys: {}", keys);
+    // println!("Values: {}", values);
 
     let query = &format!("INSERT INTO {} ({}) VALUES ({})", name, keys, values);
     println!("Insert query: {}", query);
@@ -434,7 +434,7 @@ pub async fn insert_into_table(name: &str, values: &JSON, pool: &sqlx::Pool<sqlx
         return Err(Box::new(result.unwrap_err()) as StdError);
     }
 
-    println!("Rows affected: {}", result.unwrap().rows_affected());
+    // println!("Rows affected: {}", result.unwrap().rows_affected());
 
     Ok(())
 }
@@ -468,7 +468,7 @@ pub fn generate_values(json: &JSON) -> (String, String) {
             } else if value.is_null() {
                 values.push_str("NULL, ");
             } else if value.is_object() {
-                println!("value is and object: {}", value);
+                println!("value is an object: {}", value);
                 // For objects, store as JSONB
                 let s = value.to_string();
                 values.push_str(&format!("'{}'::JSONB, ", s.replace("'", "''"))); // Escape single quotes
@@ -522,13 +522,13 @@ pub async fn generate_properties(schema: &JSON, pool: &sqlx::Pool<sqlx::Postgres
                                     let value = &value[8..value.len()-1]; // Get inside the parentheses
                                     let values = format!("{}", value);
                                     // let values = format!("'{{{}}}'", "0.0".repeat(dimensions as usize).chars().collect::<Vec<char>>().chunks(2).map(|c| c.iter().collect::<String>()).collect::<Vec<String>>().join(", "));
-                                    println!("Vector default value for key {}: {}", key, values);
+                                    // println!("Vector default value for key {}: {}", key, values);
                                     values
                                 }
                                 else if value.starts_with("Color") {
                                     let value = &value[7..value.len()-1]; // Get inside the parentheses
                                     let values = format!("{}", value);
-                                    println!("Color default value for key {}: {}", key, values);
+                                    // println!("Color default value for key {}: {}", key, values);
                                     values
                                 }
                                  else {
@@ -540,16 +540,16 @@ pub async fn generate_properties(schema: &JSON, pool: &sqlx::Pool<sqlx::Postgres
                                 format!("{}", v)
                             }
                         }).collect();
-                        println!("Array default value for key {}: {:?}", key, arr_str);
+                        // println!("Array default value for key {}: {:?}", key, arr_str);
                         format!("{{{}}}", arr_str.join(", "))
                     },
                     JSON::Object(obj) => {
                         // Complex default values not handled
-                        println!("Warning: Complex default value for key {} not handled", key);
+                        // println!("Warning: Complex default value for key {} not handled", key);
                         "NULL".to_string()
                     },
                 };
-                println!("Default value for {}: {}", key, default_value);
+                // println!("Default value for {}: {}", key, default_value);
                 // if !default.is_null() {
                 //     if default.is_string() {
                 //         default_value = format!("'{}'", default.as_str().unwrap_or("").replace("'", "''"));
@@ -559,7 +559,7 @@ pub async fn generate_properties(schema: &JSON, pool: &sqlx::Pool<sqlx::Postgres
                 //     println!("Default value for {}: {}", key, default_value);
                 // }
 
-                println!("Property: {}, Type: {}, Description: {}, Default: {}", key, value, description, default);
+                // println!("Property: {}, Type: {}, Description: {}, Default: {}", key, value, description, default);
 
                 // println!("Value is an object. Type: {:?}", value);
             }
@@ -713,7 +713,7 @@ pub fn get_default_value(r#type: &str) -> String {
 
 pub async fn create_table(name: &str, schema: &JSON, pool: &sqlx::Pool<sqlx::Postgres>) -> Result<(), StdError> {
     let properties = generate_properties(schema, pool).await;
-    println!("Table: {} Properties: {}", name, properties);
+    // println!("Table: {} Properties: {}", name, properties);
 
     let query = &format!("CREATE TABLE {} ({});", name, properties);
     // println!("Create table query: {}", query);
@@ -867,7 +867,7 @@ pub async fn get_tables(pool: &sqlx::Pool<sqlx::Postgres>) -> Result<Vec<JSON>, 
 
 pub async fn update_jsonb_array_by_key(table: &str, map_name: &str, id: i64, key: &str, value: &str, index: Option<i32>, create_if_not_exists: bool, pool: &Pool) -> Result<(), StdError> {
     let value = format!("[{}]", value); // Wrap value in array brackets
-    println!("Value to insert: {}", value);
+    // println!("Value to insert: {}", value);
 
     let query = {
         // if !index.is_none() {
@@ -885,7 +885,7 @@ pub async fn update_jsonb_array_by_key(table: &str, map_name: &str, id: i64, key
                 table, map_name, map_name, key, map_name, key, create_if_not_exists)
         }
     };
-    println!("Update JSONB array by key query: {}", query);
+    // println!("Update JSONB array by key query: {}", query);
 
     sqlx::query(&query)
 
@@ -900,7 +900,7 @@ pub async fn update_jsonb_array_by_key(table: &str, map_name: &str, id: i64, key
 pub async fn update(table: &str, key: &str, id: i64, value: &str, pool: &Pool, cast: &str) -> Result<(), StdError> {
     let query = &format!("UPDATE {} SET {} = $1::{} WHERE id = $2", table, key, cast);
 
-    println!("Update query: {}", query);
+    // println!("Update query: {}", query);
     sqlx::query(query)
 
         .bind(value)
@@ -914,7 +914,7 @@ pub async fn update(table: &str, key: &str, id: i64, value: &str, pool: &Pool, c
 pub async fn update_record(table: &str, key: &str, column: &str, id: &str, value: &str, pool: &Pool, cast: &str) -> Result<(), StdError> {
     let query = &format!("UPDATE {} SET {} = $1::{} WHERE {} = $2", table, key, cast, column);
 
-    println!("Update query: {}", query);
+    // println!("Update query: {}", query);
     sqlx::query(query)
 
         .bind(value)
@@ -964,7 +964,7 @@ pub async fn remove_from_array(table: &str, column: &str, id: i64, index: f32, p
     let start = index - 1.0;
     let end = index + 1.0;
     let query = &format!("UPDATE {} SET {} = array_cat({}[{}:{}], {}[{}:{}]) WHERE id = $1", table, column, column, start as i32, start as i32, column, end as i32, end as i32);
-    println!("Remove for Array Query: {}", query);
+    // println!("Remove for Array Query: {}", query);
     // let query = &format!("UPDATE {} SET {} = array_cat({}, $1) WHERE id = $2", table, column, column);
     sqlx::query(query)
         .bind(index)
@@ -1043,7 +1043,7 @@ pub async fn remove_jsonb_by_key(table: &str, column: &str, id: i64, key: &JSON,
         table, column, column
     );
 
-    println!("Remove JSONB by key query: {}", query);
+    // println!("Remove JSONB by key query: {}", query);
 
     sqlx::query(query)
         .bind(key)
@@ -1062,7 +1062,7 @@ pub async fn remove_hstore_by_key(table: &str, column: &str, id: i64, key: &str,
         table, column, column
     );
 
-    println!("Remove HSTORE by key query: {}", query);
+    // println!("Remove HSTORE by key query: {}", query);
 
     sqlx::query(query)
         .bind(key)
@@ -1086,7 +1086,7 @@ pub async fn update_hstore_by_key(
         table, column, column
     );
 
-    println!("Update HSTORE by key query: {}", query);
+    // println!("Update HSTORE by key query: {}", query);
 
     sqlx::query(query)
         .bind(key)
@@ -1112,7 +1112,7 @@ pub async fn update_jsonb_by_key(
         table, column, column, key,
     );
 
-    println!("Update JSONB by key query: {}", query);
+    // println!("Update JSONB by key query: {}", query);
 
     sqlx::query(query)
         .bind(key)
