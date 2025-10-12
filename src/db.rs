@@ -368,7 +368,7 @@ pub fn row_to_json(row: &PgRow) -> Option<JSON> {
     Some(JSON::Object(obj))
 }
 
-pub async fn delete_from_table(name: &str, id: &str, cast: &str, pool: &sqlx::Pool<sqlx::Postgres>) -> Result<(), StdError> {
+pub async fn delete_from_table(name: &str, id: &str, cast: &str, pool: &sqlx::Pool<sqlx::Postgres>) -> Result<bool, StdError> {
     if CASTS.contains(&cast.to_uppercase().as_str()) {
         // Valid cast
     } else {
@@ -382,12 +382,10 @@ pub async fn delete_from_table(name: &str, id: &str, cast: &str, pool: &sqlx::Po
         .await?;
 
     if result.rows_affected() == 0 {
-        println!("No row found with id: {}", id);
-    } else {
-        println!("Deleted row with id: {}", id);
+        return Ok(false);
     }
 
-    Ok(())
+    Ok(true)
 }
 
 pub async fn insert_into_table_and_return_id(name: &str, values: &JSON, pool: &sqlx::Pool<sqlx::Postgres>) -> Result<i64, StdError> {
