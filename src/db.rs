@@ -363,6 +363,15 @@ pub fn row_to_json(row: &PgRow) -> Option<JSON> {
     Some(JSON::Object(obj))
 }
 
+pub async fn delete_from_table(name: &str, id: &str, cast: &str, pool: &sqlx::Pool<sqlx::Postgres>) -> Result<(), StdError> {
+    let query = &format!("DELETE FROM {} WHERE id = $1::{}", name, cast);
+    sqlx::query(query)
+        .bind(id)
+        .execute(pool)
+        .await?;
+    Ok(())
+}
+
 pub async fn insert_into_table_and_return_id(name: &str, values: &JSON, pool: &sqlx::Pool<sqlx::Postgres>) -> Result<i64, StdError> {
     let (keys, values) = generate_values(values);
 
