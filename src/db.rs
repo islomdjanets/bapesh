@@ -1,6 +1,3 @@
-use std::default;
-
-// use anyhow::Ok;
 use sqlx::{pool, postgres::{PgPoolOptions, PgQueryResult, PgRow, PgTypeInfo, PgValueRef}, Connection, Decode, Postgres, Row, TypeInfo, ValueRef};
 // use sqlx::postgres::type_info::PgTypeInfo;
 use sqlx::Column;
@@ -11,6 +8,14 @@ use serde_json::json;
 
 pub type StdError = Box<dyn std::error::Error + Send + Sync>;
 pub type Pool = sqlx::Pool<sqlx::Postgres>; 
+
+const CASTS: [&str; 5] = [
+    "BIGINT",
+    "INTEGER",
+    "TEXT",
+    "BOOLEAN",
+    "REAL",
+];
 
 pub async fn connect() -> Result<Pool, StdError> {
     // let url = "";
@@ -364,11 +369,24 @@ pub fn row_to_json(row: &PgRow) -> Option<JSON> {
 }
 
 pub async fn delete_from_table(name: &str, id: &str, cast: &str, pool: &sqlx::Pool<sqlx::Postgres>) -> Result<(), StdError> {
+    if CASTS.contains(&cast.to_uppercase().as_str()) {
+        // Valid cast
+    } else {
+        return Err(format!("Invalid cast type: {}", cast).into());
+    }
+
     let query = &format!("DELETE FROM {} WHERE id = $1::{}", name, cast);
-    sqlx::query(query)
+    let result = sqlx::query(query)
         .bind(id)
         .execute(pool)
         .await?;
+
+    if result.rows_affected() == 0 {
+        println!("No row found with id: {}", id);
+    } else {
+        println!("Deleted row with id: {}", id);
+    }
+
     Ok(())
 }
 
