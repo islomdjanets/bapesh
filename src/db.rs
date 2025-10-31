@@ -936,6 +936,20 @@ pub async fn update(table: &str, key: &str, id: i64, value: &str, pool: &Pool, c
     Ok(())
 }
 
+pub async fn update_record_i64(table: &str, key: &str, column: &str, id: i64, value: &str, pool: &Pool, cast: &str) -> Result<(), StdError> {
+    let query = &format!("UPDATE {} SET {} = $1::{} WHERE {} = $2", table, key, cast, column);
+
+    // println!("Update query: {}", query);
+    sqlx::query(query)
+
+        .bind(value)
+        .bind(id)
+
+        .execute(pool)
+        .await?;
+    Ok(())
+}
+
 pub async fn update_record(table: &str, key: &str, column: &str, id: &str, value: &str, pool: &Pool, cast: &str) -> Result<(), StdError> {
     let query = &format!("UPDATE {} SET {} = $1::{} WHERE {} = $2", table, key, cast, column);
 
