@@ -1022,8 +1022,8 @@ pub async fn empty_array(table: &str, column: &str, id: i64, pool: &sqlx::Pool<s
     Ok(())
 }
 
-pub async fn update_array(table: &str, column: &str, id: i64, value: &JSON, pool: &sqlx::Pool<sqlx::Postgres>) -> Result<(), StdError> {
-    let query = &format!("UPDATE {} SET {} = $1 WHERE id = $2", table, column);
+pub async fn update_array(table: &str, column: &str, id: i64, value: &JSON, pool: &sqlx::Pool<sqlx::Postgres>, cast: &str) -> Result<(), StdError> {
+    let query = &format!("UPDATE {} SET {} = $1::{}[] WHERE id = $2", table, column, cast);
     sqlx::query(query)
         .bind(value.as_array().unwrap_or(&vec![]))
         .bind(id)
