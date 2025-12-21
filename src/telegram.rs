@@ -187,8 +187,6 @@ pub fn extract_user(init_data: &str) -> Option<User> {
         .map(|(k, v)| (k.to_string(), v.to_string()))
         .collect();
 
-    // println!("Parsed init data params: {:?}", params);
-
     let user_encoded = params.get("user")?;
     // println!("Encoded user data: {}", user_encoded);
     let decoded = decode(user_encoded).ok()?;
