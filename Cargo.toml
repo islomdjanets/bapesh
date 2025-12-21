@@ -4,16 +4,18 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
-bapesh_macros = { path = "./bapesh_macros" }
+# bapesh_macros = { path = "./bapesh_macros" }
 
 get_if_addrs = "0.5.2"
 
-tokio = { version = "1.6.1", features = ["full"] }
+# tokio = { version = "1.6.1", features = ["full"] }
+tokio = { version = "1.6.1", features = ["macros", "rt-multi-thread"] }
+tokio-util = "0.7.11"
 
-serde = { version = "1.0.193", features = ["derive"] }
-serde_json = "1.0.108"
+serde = { version = "1.0.219", features = ["derive"] }
+serde_json = "1.0.140"
 
-chrono = "0.4.38"
+chrono = { version = "0.4.41", features = ["serde"] }
 ring = "0.17.7" #remove!!!
 dotenv = "0.15.0"
 
@@ -23,7 +25,6 @@ uuid = { version = "1.6.1", features = ["v4"] }
 # hyper = { version = "0.14", features = ["stream", "server", "http1", "http2", "tcp", "client"] } #remove!!
 futures-util = { version = "0.3", default-features = false, features = ["sink"] }
 anyhow = "1.0.86"
-tokio-util = "0.7.11"
 futures = { version = "0.3", default-features = false }
 
 #tls
@@ -41,11 +42,15 @@ sqlx = { version = "0.8", optional = true, features = ["postgres", "json", "chro
 #telegram
 reqwest = {version = "0.12.5", optional = true} #remove!!!
 teloxide = {version = "0.12.2", optional = true}
-base64 = "0.21.5"
+base64 = "0.22.1"
+hmac = {version = "0.12.1", optional = true}
+sha2 = {version = "0.10.9", optional = true}
+urlencoding = {version = "2.1.3", optional = true}
+hex = {version = "0.4.3", optional = true}
 
 [features]
-default = ["db"]
-telegram = ["reqwest", "teloxide"]
+default = []
+telegram = ["reqwest", "teloxide", "hmac", "sha2", "urlencoding", "hex"]
 # tls = ["tokio-rustls", "rustls", "rustls-pemfile"]
 db = ["sqlx"]
 
