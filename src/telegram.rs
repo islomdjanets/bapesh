@@ -16,7 +16,7 @@ use std::{collections::HashMap, error::Error};
 use serde::{Serialize, Deserialize};
 
 #[derive(Debug, Serialize, Deserialize)]
-pub struct TelegramUser {
+pub struct User {
     pub id: i64,
     first_name: String,
     last_name: String,
@@ -177,7 +177,7 @@ pub struct TelegramUser {
 //     .await;
 // }
 
-pub fn extract_user(init_data: &str) -> Option<TelegramUser> {
+pub fn extract_user(init_data: &str) -> Option<User> {
     let params: HashMap<String, String> = init_data
         .split('&')
         .filter_map(|pair| {
@@ -202,7 +202,7 @@ pub fn extract_user(init_data: &str) -> Option<TelegramUser> {
     }
 
 
-    let user = serde_json::from_str::<TelegramUser>(&decoded);
+    let user = serde_json::from_str::<User>(&decoded);
     if user.is_err() {
         println!("Error parsing user JSON: {:?}", user.err());
         return None;

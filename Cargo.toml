@@ -40,8 +40,8 @@ sqlx = { version = "0.8", optional = true, features = ["postgres", "json", "chro
 # axum-server = { version = "0.7", features = ["tls-rustls-no-provider"] }
 
 #telegram
-reqwest = {version = "0.12.5", optional = true} #remove!!!
-teloxide = {version = "0.12.2", optional = true}
+# reqwest = {version = "0.12.5", optional = true} #remove!!!
+# teloxide = {version = "0.12.2", optional = true}
 base64 = "0.22.1"
 hmac = {version = "0.12.1", optional = true}
 sha2 = {version = "0.10.9", optional = true}
@@ -50,7 +50,7 @@ hex = {version = "0.4.3", optional = true}
 
 [features]
 default = []
-telegram = ["reqwest", "teloxide", "hmac", "sha2", "urlencoding", "hex"]
+telegram = ["teloxide", "hmac", "sha2", "urlencoding", "hex"]
 # tls = ["tokio-rustls", "rustls", "rustls-pemfile"]
 db = ["sqlx"]
 
