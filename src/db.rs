@@ -1274,3 +1274,34 @@ pub async fn filter_by_value(table: &str, key: &str, value: &str, cast: &str, po
 
     Ok(results)
 }
+
+// pub async fn filter_by_value_len(table: &str, key: &str, value: &str, cast: &str, pool: &Pool) -> Result<usize, StdError> {
+//     let query = &format!("SELECT * FROM {} WHERE {} = $1::{}", table, key, cast);
+//     let rows = sqlx::query(query)
+//         .bind(value)
+//         .fetch_all(pool)
+//         .await?;
+
+//     Ok(rows.len())
+// }
+pub async fn filter_by_value_len(
+    table: &str, 
+    key: &str, 
+    value: &str, 
+    cast: &str, 
+    pool: &Pool
+) -> Result<usize, StdError> {
+    
+    // 1. Optimization: Use COUNT(*) instead of *
+    // This returns a single number (BIGINT) instead of all rows.
+    let query = format!("SELECT COUNT(*) FROM {} WHERE {} = $1::{}", table, key, cast);
+
+    // 2. Use query_scalar to fetch the single value directly
+    let count: i64 = sqlx::query_scalar(&query)
+        .bind(value)
+        .fetch_one(pool)
+        .await?;
+
+    // Postgres COUNT returns BIGINT (i64), cast to usize for your return type
+    Ok(count as usize)
+}
