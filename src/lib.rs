@@ -31,6 +31,6 @@ pub mod telegram;
 // #[cfg(feature = "websocket")]
 // pub mod ws;
 
-// pub mod env;
+pub mod env;
 
 // pub use bapesh_macros::main;
