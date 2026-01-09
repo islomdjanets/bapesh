@@ -181,6 +181,11 @@ pub fn row_to_json(row: &PgRow) -> Option<JSON> {
 
                 // Dispatch based on OID (primary) or fallback to name matching
                 let value = match type_oid {
+                    // BOOL
+                    Some(16) => {
+                        let value: bool = <bool as Decode<Postgres>>::decode(raw).unwrap_or(false);
+                        json!(value)
+                    }
                     // JSON/JSONB OIDs
                     Some(114) | Some(3802) => {
                         <JSON as Decode<Postgres>>::decode(raw).unwrap_or(JSON::Null)
