@@ -275,10 +275,12 @@ pub fn validate_init_data(raw_init_data: &str, bot_token: &str) -> Result<bool, 
 
         if key == "hash" {
             provided_hash = decoded_value.into_owned();
-        } else if key == "signature" {
-            // SKIP the signature field for HMAC validation
-            continue;
-        } else {
+        }
+        //  else if key == "signature" {
+        //     // SKIP the signature field for HMAC validation
+        //     continue;
+        // }
+         else {
             params.push((key.to_string(), decoded_value.into_owned()));
         }
     }
