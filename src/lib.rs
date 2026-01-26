@@ -18,6 +18,7 @@
 pub mod uuid;
 pub mod json;
 pub mod date;
+pub mod auth;
 // pub mod tls;
 // pub mod functions;
 
@@ -27,6 +28,8 @@ pub mod db;
 #[cfg(feature = "telegram")]
 pub mod telegram;
 
+#[cfg(feature = "currency")]
+pub mod currency;
 
 // #[cfg(feature = "websocket")]
 // pub mod ws;
