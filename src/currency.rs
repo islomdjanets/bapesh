@@ -1,13 +1,41 @@
+use core::panic;
+use std::fmt::Debug;
+
 use bigdecimal::BigDecimal;
 use serde::{Deserialize, Serialize};
 
-#[derive(Eq, Hash, PartialEq, Clone, Copy, Serialize, Deserialize, Debug)]
+#[derive(Eq, Hash, PartialEq, Clone, Copy, Serialize, Deserialize)]
 pub enum Currency {
     PRESTIGE,
     STARS,
     TICKETS,
     TON,
     USDT
+}
+
+impl Debug for Currency {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Currency::STARS => write!(f, "STARS"),
+            Currency::TON => write!(f, "TON"),
+            Currency::USDT => write!(f, "USDT"),
+            Currency::PRESTIGE => write!(f, "PRESTIGE"),
+            Currency::TICKETS => write!(f, "TICKETS"),
+        }
+    }
+}
+
+impl From<&str> for Currency {
+    fn from(s: &str) -> Self {
+        match s {
+            "PRESTIGE" => Currency::PRESTIGE,
+            "STARS" => Currency::STARS,
+            "TICKETS" => Currency::TICKETS,
+            "TON" => Currency::TON,
+            "USDT" => Currency::USDT,
+            _ => panic!("Unknown currency type: {}", s),
+        }
+    }
 }
 
 impl AsRef<str> for Currency {
@@ -56,7 +84,7 @@ impl From<String> for Currency {
             "TICKETS" => Currency::TICKETS,
             "TON" => Currency::TON,
             "USDT" => Currency::USDT,
-            _ => Currency::PRESTIGE
+            _ => panic!("Unknown currency type: {}", value),
         }
     }
 }
