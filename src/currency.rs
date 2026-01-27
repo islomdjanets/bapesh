@@ -1,10 +1,13 @@
-use core::panic;
-use std::fmt::Debug;
+// use std::fmt::Debug;
 
-use bigdecimal::BigDecimal;
+use rust_decimal::Decimal;
+use rust_decimal_macros::dec;
 use serde::{Deserialize, Serialize};
+use strum_macros::{Display, EnumString, AsRefStr};
 
-#[derive(Eq, Hash, PartialEq, Clone, Copy, Serialize, Deserialize)]
+// #[derive(Eq, Hash, PartialEq, Clone, Copy, Serialize, Deserialize)]
+#[derive(Eq, Hash, PartialEq, Clone, Copy, Serialize, Deserialize, Display, EnumString, AsRefStr, Debug)]
+#[strum(serialize_all = "UPPERCASE")]
 pub enum Currency {
     PRESTIGE,
     STARS,
@@ -13,119 +16,137 @@ pub enum Currency {
     USDT
 }
 
-impl Debug for Currency {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            Currency::STARS => write!(f, "STARS"),
-            Currency::TON => write!(f, "TON"),
-            Currency::USDT => write!(f, "USDT"),
-            Currency::PRESTIGE => write!(f, "PRESTIGE"),
-            Currency::TICKETS => write!(f, "TICKETS"),
-        }
-    }
-}
-
-impl From<&str> for Currency {
-    fn from(s: &str) -> Self {
-        match s {
-            "PRESTIGE" => Currency::PRESTIGE,
-            "STARS" => Currency::STARS,
-            "TICKETS" => Currency::TICKETS,
-            "TON" => Currency::TON,
-            "USDT" => Currency::USDT,
-            _ => panic!("Unknown currency type: {}", s),
-        }
-    }
-}
-
-impl AsRef<str> for Currency {
-    fn as_ref(&self) -> &str {
-        match self {
-            Currency::PRESTIGE => "PRESTIGE",
-            Currency::STARS => "STARS",
-            Currency::TICKETS => "TICKETS",
-            Currency::TON => "TON",
-            Currency::USDT => "USDT",
-        }
-    }
-}
-
-impl From<u16> for Currency {
-    fn from(value: u16) -> Self {
+impl From<Currency> for u16 {
+    fn from(value: Currency) -> u16 {
         match value {
-            1 => Currency::PRESTIGE,
-            2 => Currency::STARS,
-            3 => Currency::TICKETS,
-            4 => Currency::TON,
-            5 => Currency::USDT,
-            _ => panic!("Unknown currency type: {}", value),
-        }
-    }
-}
-
-impl Into<u16> for Currency {
-    fn into(self) -> u16 {
-        match self {
             Currency::PRESTIGE => 1,
             Currency::STARS => 2,
             Currency::TICKETS => 3,
             Currency::TON => 4,
             Currency::USDT => 5,
-            _ => panic!("Unknown currency type: {}", self),
         }
     }
 }
 
-impl From<String> for Currency {
-    fn from(value: String) -> Self {
-        match value.to_uppercase().as_str() {
-            "PRESTIGE" => Currency::PRESTIGE,
-            "STARS" => Currency::STARS,
-            "TICKETS" => Currency::TICKETS,
-            "TON" => Currency::TON,
-            "USDT" => Currency::USDT,
-            _ => panic!("Unknown currency type: {}", value),
-        }
-    }
-}
+// impl Debug for Currency {
+//     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+//         match self {
+//             Currency::STARS => write!(f, "STARS"),
+//             Currency::TON => write!(f, "TON"),
+//             Currency::USDT => write!(f, "USDT"),
+//             Currency::PRESTIGE => write!(f, "PRESTIGE"),
+//             Currency::TICKETS => write!(f, "TICKETS"),
+//         }
+//     }
+// }
 
-impl std::fmt::Display for Currency {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        let currency_str = match self {
-            Currency::PRESTIGE => "PRESTIGE",
-            Currency::STARS => "STARS",
-            Currency::TICKETS => "TICKETS",
-            Currency::TON => "TON",
-            Currency::USDT => "USDT",
-        };
-        write!(f, "{}", currency_str)
-    }
-}
+// impl From<&str> for Currency {
+//     fn from(s: &str) -> Self {
+//         match s {
+//             "PRESTIGE" => Currency::PRESTIGE,
+//             "STARS" => Currency::STARS,
+//             "TICKETS" => Currency::TICKETS,
+//             "TON" => Currency::TON,
+//             "USDT" => Currency::USDT,
+//             _ => panic!("Unknown currency type: {}", s),
+//         }
+//     }
+// }
 
-pub fn convert(price: BigDecimal, from: &Currency, to: &Currency) -> BigDecimal {
+// impl AsRef<str> for Currency {
+//     fn as_ref(&self) -> &str {
+//         match self {
+//             Currency::PRESTIGE => "PRESTIGE",
+//             Currency::STARS => "STARS",
+//             Currency::TICKETS => "TICKETS",
+//             Currency::TON => "TON",
+//             Currency::USDT => "USDT",
+//         }
+//     }
+// }
+
+// impl From<u16> for Currency {
+//     fn from(value: u16) -> Self {
+//         match value {
+//             1 => Currency::PRESTIGE,
+//             2 => Currency::STARS,
+//             3 => Currency::TICKETS,
+//             4 => Currency::TON,
+//             5 => Currency::USDT,
+//             _ => panic!("Unknown currency type: {}", value),
+//         }
+//     }
+// }
+
+// impl Into<u16> for Currency {
+//     fn into(self) -> u16 {
+//         match self {
+//             Currency::PRESTIGE => 1,
+//             Currency::STARS => 2,
+//             Currency::TICKETS => 3,
+//             Currency::TON => 4,
+//             Currency::USDT => 5,
+//         }
+//     }
+// }
+
+// impl From<String> for Currency {
+//     fn from(value: String) -> Self {
+//         match value.to_uppercase().as_str() {
+//             "PRESTIGE" => Currency::PRESTIGE,
+//             "STARS" => Currency::STARS,
+//             "TICKETS" => Currency::TICKETS,
+//             "TON" => Currency::TON,
+//             "USDT" => Currency::USDT,
+//             _ => panic!("Unknown currency type: {}", value),
+//         }
+//     }
+// }
+
+// impl std::fmt::Display for Currency {
+//     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+//         let currency_str = match self {
+//             Currency::PRESTIGE => "PRESTIGE",
+//             Currency::STARS => "STARS",
+//             Currency::TICKETS => "TICKETS",
+//             Currency::TON => "TON",
+//             Currency::USDT => "USDT",
+//         };
+//         write!(f, "{}", currency_str)
+//     }
+// }
+
+pub fn convert(price: Decimal, from: &Currency, to: &Currency, ton_price: Decimal) -> Decimal {
     if from == to {
         return price;
     }
-    let from_course = get_course(from);
-    let to_course = get_course(to);
+    let from_course = get_course(from, ton_price);
+    let to_course = get_course(to, ton_price);
 
-    let result = price * from_course / to_course;
+    let result = (price * from_course) / to_course;
 
     // return Number(result.toFixed(2));
     // result.with_scale(2)
-    result
+    result.normalize()
 }
 
-pub fn get_course(currency: &Currency) -> BigDecimal {
-    // if TON_PRICE == BigDecimal::from(0) {
-    //     println!("not initialised TON price");
-    // }
+pub fn get_course(currency: &Currency, current_ton_usd: Decimal) -> Decimal {
     match currency {
-        // Currency::TON => TON_PRICE,
-        Currency::PRESTIGE => "0.03".parse().unwrap(),
-        Currency::STARS => "0.02".parse().unwrap(),
-        Currency::TICKETS => "0.1".parse().unwrap(),
-        Currency::USDT => "1.0".parse().unwrap(),
-        _ => panic!("Unknown currency type: {}", currency),
+        Currency::TON => current_ton_usd,
+        Currency::PRESTIGE => dec!(0.03),
+        Currency::STARS => dec!(0.02),
+        Currency::TICKETS => dec!(0.1),
+        Currency::USDT => dec!(1.0),
     }
+}
+
+// pub fn from_nanoton(ton: u64) -> Decimal {
+//     let nanoton_in_decimal: Decimal = Decimal::new(1, 9); // 1 TON = 10^9 nanoton
+//     Decimal::from(ton) / nanoton_in_decimal
+// }
+
+pub fn from_nanoton(nanoton: u64) -> Decimal {
+    // This takes the integer and moves the decimal point 9 places to the left.
+    // e.g., 1_000_000_000 becomes 1.000000000
+    Decimal::from_i128_with_scale(nanoton as i128, 9)
 }
