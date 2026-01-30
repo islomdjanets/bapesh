@@ -153,14 +153,14 @@ pub fn from_nanoton(nanoton: u64) -> Decimal {
 }
 
 pub async fn add(
-    currency: Currency,
-    amount: Decimal,
+    currency: &Currency,
+    amount: &Decimal,
     user_id: i64,
     client: &reqwest::Client,
 ) -> Result<(), (StatusCode, String)> {
     let prestige_url = "https://prestige.up.railway.app";
 
-    let currency_id: u16 = currency.into();
+    let currency_id: u16 = (*currency).into();
     let external_url = format!(
         "{}/balance/add_currency/{}/{}/{}", 
         prestige_url, currency_id, amount, user_id
@@ -183,14 +183,14 @@ pub async fn add(
 }
 
 pub async fn sub(
-    currency: Currency,
-    amount: Decimal,
+    currency: &Currency,
+    amount: &Decimal,
     user_id: i64,
     client: &reqwest::Client,
 ) -> Result<(), (StatusCode, String)> {
     let prestige_url = "https://prestige.up.railway.app";
 
-    let currency_id: u16 = currency.into();
+    let currency_id: u16 = (*currency).into();
     let external_url = format!(
         "{}/balance/sub_currency/{}/{}/{}", 
         prestige_url, currency_id, amount, user_id

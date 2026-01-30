@@ -54,7 +54,7 @@ reqwest = {version = "0.12.5", optional = true} #remove!!!
 # strum_macros = "0.27.2"
 
 [features]
-default = ["currency"]
+default = []
 telegram = ["hmac", "sha2", "urlencoding", "hex"]
 currency = ["rust_decimal", "reqwest"]
 # tls = ["tokio-rustls", "rustls", "rustls-pemfile"]
