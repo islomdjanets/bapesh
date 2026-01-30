@@ -39,7 +39,6 @@ futures = { version = "0.3", default-features = false }
 sqlx = { version = "0.8", optional = true, features = ["postgres", "json", "chrono", "runtime-tokio-rustls"] }
 
 #telegram
-# reqwest = {version = "0.12.5", optional = true} #remove!!!
 # teloxide = {version = "0.12.2", optional = true}
 base64 = "0.22.1"
 hmac = {version = "0.12.1", optional = true}
@@ -49,13 +48,15 @@ hex = {version = "0.4.3", optional = true}
 
 rust_decimal = { version = "1.40.0", features = ["db-postgres", "serde-float"], optional = true } 
 rust_decimal_macros = "1.40.0"
-strum = "0.27.2"
-strum_macros = "0.27.2"
+reqwest = {version = "0.12.5", optional = true} #remove!!!
+
+# strum = "0.27.2"
+# strum_macros = "0.27.2"
 
 [features]
 default = ["currency"]
 telegram = ["hmac", "sha2", "urlencoding", "hex"]
-currency = ["rust_decimal"]
+currency = ["rust_decimal", "reqwest"]
 # tls = ["tokio-rustls", "rustls", "rustls-pemfile"]
 db = ["sqlx"]
 

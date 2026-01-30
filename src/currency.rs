@@ -1,5 +1,6 @@
 use std::fmt::Debug;
 
+use reqwest::StatusCode;
 use rust_decimal::Decimal;
 use rust_decimal_macros::dec;
 use serde::{Deserialize, Serialize};
@@ -149,4 +150,64 @@ pub fn from_nanoton(nanoton: u64) -> Decimal {
     // This takes the integer and moves the decimal point 9 places to the left.
     // e.g., 1_000_000_000 becomes 1.000000000
     Decimal::from_i128_with_scale(nanoton as i128, 9)
+}
+
+pub async fn add(
+    currency: Currency,
+    amount: Decimal,
+    user_id: i64,
+    client: &reqwest::Client,
+) -> Result<(), (StatusCode, String)> {
+    let prestige_url = "https://prestige.up.railway.app";
+
+    let currency_id: u16 = currency.into();
+    let external_url = format!(
+        "{}/balance/add_currency/{}/{}/{}", 
+        prestige_url, currency_id, amount, user_id
+    );
+    
+    let resp = client
+        .post(&external_url)
+        // .header("Authorization", &state.internal_api_key)
+        .send()
+        .await
+        .map_err(|_| (StatusCode::BAD_GATEWAY, "Balance service unreachable".to_string()))?;
+    
+    if !resp.status().is_success() {
+        let err = resp.text().await.unwrap_or_default();
+        println!("External add_currency failed: {}", err);
+        return Err((StatusCode::INTERNAL_SERVER_ERROR, format!("External add_currency failed: {}", err)));
+    }
+
+    Ok(())
+}
+
+pub async fn sub(
+    currency: Currency,
+    amount: Decimal,
+    user_id: i64,
+    client: &reqwest::Client,
+) -> Result<(), (StatusCode, String)> {
+    let prestige_url = "https://prestige.up.railway.app";
+
+    let currency_id: u16 = currency.into();
+    let external_url = format!(
+        "{}/balance/sub_currency/{}/{}/{}", 
+        prestige_url, currency_id, amount, user_id
+    );
+    
+    let resp = client
+        .post(&external_url)
+        // .header("Authorization", &state.internal_api_key)
+        .send()
+        .await
+        .map_err(|_| (StatusCode::BAD_GATEWAY, "Balance service unreachable".to_string()))?;
+    
+    if !resp.status().is_success() {
+        let err = resp.text().await.unwrap_or_default();
+        println!("External sub_currency failed: {}", err);
+        return Err((StatusCode::INTERNAL_SERVER_ERROR, format!("External sub_currency failed: {}", err)));
+    }
+
+    Ok(())
 }
