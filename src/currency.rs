@@ -1,9 +1,11 @@
 use std::{collections::HashMap, fmt::Debug};
 
 use reqwest::StatusCode;
-use rust_decimal::Decimal;
+use rust_decimal::{Decimal, prelude::ToPrimitive};
 use rust_decimal_macros::dec;
 use serde::{Deserialize, Serialize};
+
+use rust_decimal::RoundingStrategy;
 // use strum_macros::{Display, EnumString, AsRefStr};
 
 #[derive(Eq, Hash, PartialEq, Clone, Copy, Serialize, Deserialize)]
@@ -117,18 +119,62 @@ impl std::fmt::Display for Currency {
     }
 }
 
-pub fn convert(price: Decimal, from: &Currency, to: &Currency, ton_price: Decimal) -> Decimal {
+pub enum RoundMode {
+    Nearest, // Standard rounding: .5 up, .4 down
+    Down,    // Floor: Always rounds towards zero
+    Up,      // Ceil: Always rounds away from zero
+}
+
+pub fn convert(
+    price: Decimal,
+    from: &Currency,
+    to: &Currency,
+    ton_price: Decimal,
+    round_mode: RoundMode,
+) -> Decimal {
     if from == to {
         return price;
     }
     let from_course = get_course(from, ton_price);
     let to_course = get_course(to, ton_price);
 
-    let result = (price * from_course) / to_course;
+    let mut result = (price * from_course) / to_course;
 
     // return Number(result.toFixed(2));
     // result.with_scale(2)
-    result.normalize()
+    // result.normalize()
+    // to_units(result, to)
+
+    // Map your custom RoundMode to rust_decimal::RoundingStrategy
+    let strategy = match round_mode {
+        RoundMode::Nearest => RoundingStrategy::MidpointAwayFromZero,
+        RoundMode::Down => RoundingStrategy::ToZero,
+        RoundMode::Up => RoundingStrategy::AwayFromZero,
+    };
+
+    result = match to {
+        Currency::STARS => result.round_dp_with_strategy(0, strategy),
+        Currency::TON => result.round_dp_with_strategy(9, strategy),
+        Currency::PRESTIGE | Currency::USDT => result.round_dp_with_strategy(2, strategy),
+        _ => result.normalize(),
+    };
+
+    result
+}
+
+pub fn to_units(amount: Decimal, currency: &Currency) -> i64 {
+    match currency {
+        // TON: 9 decimals. 1.0 TON -> 1,000,000,000 nanotons
+        Currency::TON => (amount * dec!(1_000_000_000)).to_i64().unwrap_or(0),
+        
+        // STARS: 0 decimals. 50.0 STARS -> 50
+        Currency::STARS => amount.to_i64().unwrap_or(0),
+        
+        // PRESTIGE: 2 decimals. 10.50 -> 1050 (if your service uses cents)
+        Currency::PRESTIGE => (amount * dec!(100)).to_i64().unwrap_or(0),
+        
+        _ => amount.to_i64().unwrap_or(0),
+    }
 }
 
 pub fn get_course(currency: &Currency, current_ton_usd: Decimal) -> Decimal {
