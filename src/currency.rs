@@ -10,11 +10,11 @@ use serde::{Deserialize, Serialize};
 // #[derive(Eq, Hash, PartialEq, Clone, Copy, Serialize, Deserialize, Display, EnumString, AsRefStr, Debug)]
 // #[strum(serialize_all = "UPPERCASE")]
 pub enum Currency {
-    PRESTIGE,
-    STARS,
-    TICKETS,
-    TON,
-    USDT
+    PRESTIGE = 1,
+    STARS = 2,
+    TICKETS = 3,
+    TON = 4,
+    USDT = 5,
 }
 
 // impl From<Currency> for u16 {
