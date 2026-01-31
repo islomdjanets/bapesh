@@ -156,25 +156,36 @@ pub async fn add_multiple(
     currencies: &HashMap<Currency, Decimal>,
     user_id: i64,
     client: &reqwest::Client,
+    internal_secret: &String,
 ) -> Result<(), (StatusCode, String)> {
     let prestige_url = "https://prestige.up.railway.app";
+
+    // 1. Keep the URL clean (only ID in path)
+    let external_url = format!("{}/balance/add_currencies/{}", prestige_url, user_id);
     
-    let external_url = format!(
-        "{}/balance/add_currencies/{}/{}", 
-        prestige_url, serde_json::to_string(currencies).unwrap(), user_id
-    );
+    // let external_url = format!(
+    //     "{}/balance/add_currencies/{}/{}", 
+    //     prestige_url, serde_json::to_string(currencies).unwrap(), user_id
+    // );
     
     let resp = client
         .post(&external_url)
-        // .header("Authorization", &state.internal_api_key)
+        .header("X-Internal-Secret", internal_secret)
+        .json(currencies)
         .send()
         .await
-        .map_err(|_| (StatusCode::BAD_GATEWAY, "Balance service unreachable".to_string()))?;
+        .map_err(|e| {
+            eprintln!("Network Error: {:?}", e);
+            (StatusCode::BAD_GATEWAY, "Balance service unreachable".to_string())
+        })?;
     
     if !resp.status().is_success() {
-        let err = resp.text().await.unwrap_or_default();
-        let message = format!("External add_currencies failed: {}", err);
-        println!("{}", message);
+        let err_status = resp.status();
+        let err_body = resp.text().await.unwrap_or_else(|_| "No error body".to_string());
+        
+        let message = format!("Balance service error ({}): {}", err_status, err_body);
+        eprintln!("{}", message);
+
         return Err((StatusCode::INTERNAL_SERVER_ERROR, message));
     }
 
@@ -186,6 +197,7 @@ pub async fn add(
     amount: &Decimal,
     user_id: i64,
     client: &reqwest::Client,
+    internal_secret: &String,
 ) -> Result<(), (StatusCode, String)> {
     let prestige_url = "https://prestige.up.railway.app";
 
@@ -197,7 +209,7 @@ pub async fn add(
     
     let resp = client
         .post(&external_url)
-        // .header("Authorization", &state.internal_api_key)
+        .header("X-Internal-Secret", internal_secret)
         .send()
         .await
         .map_err(|_| (StatusCode::BAD_GATEWAY, "Balance service unreachable".to_string()))?;
@@ -217,6 +229,7 @@ pub async fn sub(
     amount: &Decimal,
     user_id: i64,
     client: &reqwest::Client,
+    internal_secret: &String,
 ) -> Result<(), (StatusCode, String)> {
     let prestige_url = "https://prestige.up.railway.app";
 
@@ -228,10 +241,13 @@ pub async fn sub(
     
     let resp = client
         .post(&external_url)
-        // .header("Authorization", &state.internal_api_key)
+        .header("X-Internal-Secret", internal_secret)
         .send()
         .await
-        .map_err(|_| (StatusCode::BAD_GATEWAY, "Balance service unreachable".to_string()))?;
+        .map_err(|e| {
+            eprintln!("Network Error: {:?}", e);
+            (StatusCode::BAD_GATEWAY, "Balance service unreachable".to_string())
+        })?;
     
     if !resp.status().is_success() {
         let err = resp.text().await.unwrap_or_default();
