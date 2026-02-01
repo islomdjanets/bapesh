@@ -181,7 +181,7 @@ pub fn get_course(currency: &Currency, current_ton_usd: Decimal) -> Decimal {
     match currency {
         Currency::TON => current_ton_usd,
         Currency::PRESTIGE => dec!(0.03),
-        Currency::STARS => dec!(0.02),
+        Currency::STARS => dec!(0.015),
         Currency::TICKETS => dec!(0.1),
         Currency::USDT => dec!(1.0),
     }
