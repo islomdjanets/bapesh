@@ -26,6 +26,18 @@ pub struct LoginResult {
     is_created: bool
 }
 
+impl IntoResponse for LoginResult {
+    fn into_response(self) -> axum::response::Response {
+        let body = Json(json!({
+            "token": self.token,
+            "user": self.user,
+            "data": self.data,
+            "is_created": self.is_created
+        }));
+        (StatusCode::OK, body).into_response()
+    }
+}
+
 // #[derive(Debug, Deserialize)]
 // struct UserIdPayload{
 //     user_id: u64,
