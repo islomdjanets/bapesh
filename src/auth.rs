@@ -22,7 +22,7 @@ const JWT_SECRET: &[u8] = b"your_ultra_secret_game_key_123"; // Use an Env Var i
 pub struct LoginResult {
     token: String,
     user: Option<telegram::User>,
-    // data: Option<JSON>,
+    data: Option<JSON>,
     // is_created: bool
 }
 
@@ -43,6 +43,7 @@ pub fn login(
         return LoginResult {
             user: None,
             token: String::new(),
+            data: None,
         };
     }
 
@@ -54,6 +55,7 @@ pub fn login(
         return LoginResult {
             user: None,
             token: String::new(),
+            data: None,
         };
     }
     let user = user.unwrap();
@@ -107,6 +109,7 @@ pub fn login(
     LoginResult {
         token: token,
         user: Some(user),
+        data: None,
     }
 }
 
