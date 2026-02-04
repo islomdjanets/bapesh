@@ -23,7 +23,7 @@ pub struct LoginResult {
     token: String,
     user: Option<telegram::User>,
     data: Option<JSON>,
-    // is_created: bool
+    is_created: bool
 }
 
 // #[derive(Debug, Deserialize)]
@@ -44,6 +44,7 @@ pub fn login(
             user: None,
             token: String::new(),
             data: None,
+            is_created: false
         };
     }
 
@@ -56,6 +57,7 @@ pub fn login(
             user: None,
             token: String::new(),
             data: None,
+            is_created: false
         };
     }
     let user = user.unwrap();
@@ -110,6 +112,7 @@ pub fn login(
         token: token,
         user: Some(user),
         data: None,
+        is_created: true
     }
 }
 
