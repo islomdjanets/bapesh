@@ -20,10 +20,10 @@ const JWT_SECRET: &[u8] = b"your_ultra_secret_game_key_123"; // Use an Env Var i
 
 #[derive(Debug, Serialize)]
 pub struct LoginResult {
-    token: String,
-    user: Option<telegram::User>,
-    data: Option<JSON>,
-    is_created: bool
+    pub token: String,
+    pub user: Option<telegram::User>,
+    pub data: Option<JSON>,
+    pub is_created: bool
 }
 
 impl IntoResponse for LoginResult {
