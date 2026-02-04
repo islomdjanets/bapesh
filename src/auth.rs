@@ -31,7 +31,7 @@ pub struct LoginResult {
 //     user_id: u64,
 // }
 
-pub async fn login(
+pub fn login(
     // Query(params): Query<HashMap<String, String>>,
     init_data: &str,
     bot_token: &str,
