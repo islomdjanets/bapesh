@@ -1,6 +1,6 @@
-use crate::date::{now, parse_from_rfc3339, to_rfc3339};
+// use crate::date::{now, parse_from_rfc3339, to_rfc3339};
 
-pub async fn new_action() {
+pub async fn new_action(action_type: &str, user_id: i64) {
 
         // let now = parse_from_rfc3339(
         //     &now().to_string()
