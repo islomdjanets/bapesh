@@ -19,6 +19,7 @@ pub mod uuid;
 pub mod json;
 pub mod date;
 pub mod auth;
+pub mod tasker;
 // pub mod tls;
 // pub mod functions;
 
