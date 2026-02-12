@@ -18,10 +18,7 @@
 pub mod uuid;
 pub mod json;
 pub mod date;
-pub mod auth;
 pub mod tasker;
-// pub mod tls;
-// pub mod functions;
 
 #[cfg(feature = "db")]
 pub mod db;
@@ -31,6 +28,9 @@ pub mod telegram;
 
 #[cfg(feature = "currency")]
 pub mod currency;
+
+#[cfg(feature = "auth")]
+pub mod auth;
 
 // #[cfg(feature = "websocket")]
 // pub mod ws;
