@@ -59,7 +59,7 @@ reqwest = {version = "0.12.5", features = ["json"], optional = true}
 # strum_macros = "0.27.2"
 
 [features]
-default = ["auth"]
+default = []
 telegram = ["hmac", "sha2", "urlencoding", "hex"]
 currency = ["rust_decimal", "reqwest"]
 auth = ["jsonwebtoken", "axum", "hyper", "tower-http", "telegram"]

@@ -1,9 +1,7 @@
-use std::collections::HashMap;
-
-use axum::{Json, extract::{FromRequestParts, Query}, http::request::Parts, response::IntoResponse};
+use axum::{Json, extract::{FromRequestParts}, http::request::Parts, response::IntoResponse};
 use hyper::{StatusCode};
 use serde::{Deserialize, Serialize};
-use jsonwebtoken::{encode, decode, Header, Algorithm, Validation, EncodingKey, DecodingKey};
+use jsonwebtoken::{encode, decode, Header, Validation, EncodingKey, DecodingKey};
 use chrono::{Utc, Duration};
 use serde_json::json;
 
@@ -37,11 +35,6 @@ impl IntoResponse for LoginResult {
         (StatusCode::OK, body).into_response()
     }
 }
-
-// #[derive(Debug, Deserialize)]
-// struct UserIdPayload{
-//     user_id: u64,
-// }
 
 pub fn login(
     // Query(params): Query<HashMap<String, String>>,
