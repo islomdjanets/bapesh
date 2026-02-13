@@ -18,7 +18,6 @@
 pub mod uuid;
 pub mod json;
 pub mod date;
-pub mod tasker;
 
 #[cfg(feature = "db")]
 pub mod db;
@@ -31,6 +30,9 @@ pub mod currency;
 
 #[cfg(feature = "auth")]
 pub mod auth;
+
+#[cfg(feature = "tasker")]
+pub mod tasker;
 
 // #[cfg(feature = "websocket")]
 // pub mod ws;
