@@ -14,8 +14,6 @@ pub struct Claims {
     pub iat: usize,    // Issued at (Unix timestamp)
 }
 
-const JWT_SECRET: &[u8] = b"your_ultra_secret_game_key_123"; // Use an Env Var in production!
-
 #[derive(Debug, Serialize)]
 pub struct LoginResult {
     pub token: String,
@@ -106,10 +104,13 @@ pub fn login(
     };
 
     // 2. Sign the token
+    let JWT_SECRET = env::get("JWT_SECRET")
+        .expect("JWT_SECRET IS NOT SETUP").into_bytes();
+
     let token = encode(
         &Header::default(),
         &claims,
-        &EncodingKey::from_secret(JWT_SECRET),
+        &EncodingKey::from_secret(&JWT_SECRET),
     ).unwrap();
 
     // 3. Return the token to the JS engine
@@ -167,10 +168,13 @@ where
             .and_then(|h| h.strip_prefix("Bearer "))
             .ok_or((StatusCode::UNAUTHORIZED, "Missing or invalid token"))?;
 
+        let JWT_SECRET = env::get("JWT_SECRET")
+            .expect("JWT_SECRET IS NOT SETUP").into_bytes();
+
         // 2. Decode and Validate the JWT
         let token_data = decode::<Claims>(
             auth_header,
-            &DecodingKey::from_secret(JWT_SECRET),
+            &DecodingKey::from_secret(&JWT_SECRET),
             &Validation::default(),
         )
         .map_err(|_| (StatusCode::UNAUTHORIZED, "Invalid or expired token"))?;
