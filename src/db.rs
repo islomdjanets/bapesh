@@ -242,7 +242,7 @@ pub fn row_to_json(row: &PgRow) -> Option<JSON> {
                             match <Vec<f32> as Decode<Postgres>>::decode(raw.clone()) {
                                 Ok(arr) => json!(arr),
                                 Err(_) => {
-                                    println!("Falling back to text decode for REAL[], {} {}", type_oid.unwrap_or(0), type_name);
+                                    // println!("Falling back to text decode for REAL[], {} {}", type_oid.unwrap_or(0), type_name);
                                     let arr_str: &str = <&str as Decode<Postgres>>::decode(raw).unwrap_or("[]");
                                     serde_json::from_str(arr_str).unwrap_or_else(|_| json!([]))
                                 }
@@ -312,7 +312,7 @@ pub fn row_to_json(row: &PgRow) -> Option<JSON> {
                     }
                     // Fallback: Use type_name for unknown OIDs
                     _ => {
-                        println!("Unknown OID: {}, falling back to name match: {}", type_oid.unwrap_or(0), type_name);
+                        // println!("Unknown OID: {}, falling back to name match: {}", type_oid.unwrap_or(0), type_name);
                         match type_name.to_lowercase().as_str() {
                             "int8" | "bigint" => {
                                 let num: i64 = <i64 as Decode<Postgres>>::decode(raw).unwrap_or(0);
@@ -340,7 +340,7 @@ pub fn row_to_json(row: &PgRow) -> Option<JSON> {
                             }
                             _ => {
                                 // Ultimate fallback: Try as string
-                                println!("Fallback to string decode for type name: {}", type_name);
+                                // println!("Fallback to string decode for type name: {}", type_name);
                                 let s: &str = <&str as Decode<Postgres>>::decode(raw).unwrap_or("null");
                                 json!(s)
                             }
