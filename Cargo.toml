@@ -1,7 +1,7 @@
 [package]
 name = "bapesh"
 version = "0.1.0"
-edition = "2021"
+edition = "2024"
 
 [dependencies]
 # bapesh_macros = { path = "./bapesh_macros" }
@@ -58,12 +58,17 @@ reqwest = {version = "0.12.5", features = ["json"], optional = true}
 # strum = "0.27.2"
 # strum_macros = "0.27.2"
 
+# s3
+aws-config = {version = "1.5", optional = true}
+aws-sdk-s3 = {version = "1.5", optional = true}
+
 [features]
-default = ["tasker"]
+default = ["s3"]
 tasker = ["reqwest"]
 telegram = ["hmac", "sha2", "urlencoding", "hex"]
 currency = ["rust_decimal", "reqwest"]
 auth = ["jsonwebtoken", "axum", "hyper", "tower-http", "telegram"]
+s3 = ["aws-config", "aws-sdk-s3"]
 # tls = ["tokio-rustls", "rustls", "rustls-pemfile"]
 db = ["sqlx"]
 
