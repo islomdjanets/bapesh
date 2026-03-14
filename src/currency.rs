@@ -252,10 +252,13 @@ pub async fn add(
         "{}/balance/add_currency/{}/{}/{}", 
         prestige_url, currency_id, amount, user_id
     );
+
+    let tasker_host = env::get("TASKER_HOST").unwrap_or_default();
     
     let resp = client
         .post(&external_url)
         .header("X-Internal-Secret", internal_secret)
+        .header("Tasker-Host", tasker_host)
         .send()
         .await
         .map_err(|_| (StatusCode::BAD_GATEWAY, "Balance service unreachable".to_string()))?;
@@ -285,9 +288,12 @@ pub async fn sub(
         prestige_url, currency_id, amount, user_id
     );
     
+    let tasker_host = env::get("TASKER_HOST").unwrap_or_default();
+
     let resp = client
         .post(&external_url)
         .header("X-Internal-Secret", internal_secret)
+        .header("Tasker-Host", tasker_host)
         .send()
         .await
         .map_err(|e| {
