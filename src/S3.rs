@@ -3,6 +3,8 @@ use std::env;
 use aws_config::{BehaviorVersion, Region};
 use aws_sdk_s3::{Client as S3Client, config::Credentials, operation::put_object::PutObjectOutput, primitives::ByteStream};
 
+pub type Client = S3Client;
+
 // use reqwest::Client;
 
 // use crate::{AppState, LOSS_QUALITY};
