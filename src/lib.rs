@@ -34,7 +34,8 @@ pub mod auth;
 #[cfg(feature = "tasker")]
 pub mod tasker;
 
-// #[cfg(feature = "s3")]
+#[cfg(feature = "s3")]
+pub mod S3;
 // pub mod s3;
 
 // #[cfg(feature = "websocket")]

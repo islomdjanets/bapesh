@@ -63,12 +63,12 @@ aws-config = {version = "1.5", optional = true}
 aws-sdk-s3 = {version = "1.5", optional = true}
 
 [features]
-default = []
+default = ["s3"]
 tasker = ["reqwest"]
 telegram = ["hmac", "sha2", "urlencoding", "hex"]
 currency = ["rust_decimal", "reqwest"]
 auth = ["jsonwebtoken", "axum", "hyper", "tower-http", "telegram"]
-s3 = ["aws-config", "aws-sdk-s3"]
+s3 = ["aws-config", "aws-sdk-s3", "reqwest"]
 # tls = ["tokio-rustls", "rustls", "rustls-pemfile"]
 db = ["sqlx"]
 
