@@ -1,5 +1,7 @@
 // use crate::date::{now, parse_from_rfc3339, to_rfc3339};
 
+use reqwest::Response;
+
 use crate::env;
 
 pub async fn new_action_with_host(
@@ -7,15 +9,15 @@ pub async fn new_action_with_host(
     user_id: i64,
     client: &reqwest::Client,
     host: String,
-) -> Result<(), Box<dyn std::error::Error>> {
+) -> Result<Response, reqwest::Error> {
 
     // let host = env::get("TASKER_HOST")
     //      .expect("TASKER_HOST IS NOT SETUP");
 
-    let result = client
+    client
         .post(format!("{host}/actions/{action_type}/{user_id}"))
         .send()
-        .await?;
+        .await
         // let now = parse_from_rfc3339(
         //     &now().to_string()
         // ).unwrap();
@@ -30,17 +32,20 @@ pub async fn new_action_with_host(
 
         // format: {action_type}:{hour-minute}
 
-        Ok(())
 }
 
-pub async fn new_action(action_type: &str, user_id: i64, client: &reqwest::Client) -> Result<(), Box<dyn std::error::Error>> {
+pub async fn new_action(
+    action_type: &str,
+    user_id: i64,
+    client: &reqwest::Client
+) -> Result<Response, reqwest::Error> {
 
     let host = env::get("TASKER_HOST").expect("TASKER_HOST IS NOT SETUP");
 
-    let result = client
+    client
         .post(format!("{host}/actions/{action_type}/{user_id}"))
         .send()
-        .await?;
+        .await
         // let now = parse_from_rfc3339(
         //     &now().to_string()
         // ).unwrap();
@@ -52,8 +57,9 @@ pub async fn new_action(action_type: &str, user_id: i64, client: &reqwest::Clien
         // await DATA.update_map(key, timestamp, action_type);
         // // console.log(key, DATA.$(key).get(timestamp));
 
+    
 
         // format: {action_type}:{hour-minute}
 
-        Ok(())
+        // Ok(())
 }

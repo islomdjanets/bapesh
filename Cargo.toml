@@ -63,7 +63,7 @@ aws-config = {version = "1.5", optional = true}
 aws-sdk-s3 = {version = "1.5", optional = true}
 
 [features]
-default = ["s3"]
+default = []
 tasker = ["reqwest"]
 telegram = ["hmac", "sha2", "urlencoding", "hex"]
 currency = ["rust_decimal", "reqwest"]
