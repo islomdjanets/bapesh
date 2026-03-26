@@ -246,21 +246,23 @@ pub async fn add(
     user_id: i64,
     client: &reqwest::Client,
     internal_secret: &String,
+    is_deposit: bool
 ) -> Result<(), (StatusCode, String)> {
     let prestige_url = "https://prestige.up.railway.app";
 
     let currency_id: u16 = (*currency).into();
     let external_url = format!(
-        "{}/balance/add_currency/{}/{}/{}", 
+        "{}/balance/add_currency/{}/{}/{}",
         prestige_url, currency_id, amount, user_id
     );
 
-    let tasker_host = env::get("TASKER_HOST").unwrap_or_default();
+    // let tasker_host = env::get("TASKER_HOST").unwrap_or_default();
     
     let resp = client
         .post(&external_url)
         .header("X-Internal-Secret", internal_secret)
-        .header("Tasker-Host", tasker_host)
+        .header("Is-Deposit", if is_deposit {"true"} else {"false"})
+        // .header("Tasker-Host", tasker_host)
         .send()
         .await
         .map_err(|_| (StatusCode::BAD_GATEWAY, "Balance service unreachable".to_string()))?;
@@ -290,12 +292,12 @@ pub async fn sub(
         prestige_url, currency_id, amount, user_id
     );
     
-    let tasker_host = env::get("TASKER_HOST").unwrap_or_default();
+    // let tasker_host = env::get("TASKER_HOST").unwrap_or_default();
 
     let resp = client
         .post(&external_url)
         .header("X-Internal-Secret", internal_secret)
-        .header("Tasker-Host", tasker_host)
+        // .header("Tasker-Host", tasker_host)
         .send()
         .await
         .map_err(|e| {

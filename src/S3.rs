@@ -88,7 +88,7 @@ pub async fn get_client_and_endpoint() -> S3Client {
 
     // Configure Tigris client
     let access_key = env::var("S3_ACCESS_KEY")
-        .expect("Missing S3_ACCESS_KEY_ID");
+        .expect("Missing S3_ACCESS_KEY");
 
     let secret_key = env::var("S3_SECRET_KEY")
         .expect("Missing S3_SECRET_KEY");
