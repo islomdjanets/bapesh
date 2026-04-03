@@ -1,7 +1,7 @@
 use std::{collections::HashMap, fmt::Debug};
 
 use reqwest::StatusCode;
-use rust_decimal::{Decimal, prelude::ToPrimitive};
+use rust_decimal::{Decimal, prelude::{FromPrimitive, ToPrimitive}};
 use rust_decimal_macros::dec;
 use serde::{Deserialize, Serialize};
 
@@ -313,4 +313,20 @@ pub async fn sub(
     }
 
     Ok(())
+}
+
+pub fn f32_to_decimal(value: f32) -> Option<Decimal> {
+    Decimal::from_f32_retain(value)
+}
+
+pub fn f64_to_decimal(value: f64) -> Option<Decimal> {
+    Decimal::from_f64_retain(value)
+}
+
+pub fn i32_to_decimal(value: i32) -> Option<Decimal> {
+    Decimal::from_i32(value)
+}
+
+pub fn i64_to_decimal(value: i64) -> Option<Decimal> {
+    Decimal::from_i64(value)
 }
