@@ -340,7 +340,7 @@ pub async fn transfer(
 
     client: &reqwest::Client,
     internal_secret: &String,
-) -> Result<(), (StatusCode, String)> {
+) -> Result<String, (StatusCode, String)> {
     let prestige_url = "https://prestige.up.railway.app";
 
     let currency_id: u16 = (*currency).into();
@@ -369,5 +369,13 @@ pub async fn transfer(
         return Err((StatusCode::INTERNAL_SERVER_ERROR, message));
     }
 
-    Ok(())
+    let result = resp.text().await;
+    match result {
+        Ok(text) => Ok(text),
+        Err(e) => {
+            let message = format!("Failed to read transfer response: {:?}", e);
+            println!("{}", message);
+            Err((StatusCode::INTERNAL_SERVER_ERROR, message))
+        }
+    }
 }
