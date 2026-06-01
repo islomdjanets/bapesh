@@ -1,5 +1,6 @@
 // use urlencoding::decode;
 use hmac::{Hmac, Mac};
+use reqwest::Client;
 use sha2::{Sha256};
 
 use std::{error::Error};
@@ -327,4 +328,83 @@ pub fn extract_user(init_data: &str) -> Option<User> {
 
     let decoded_json = urlencoding::decode(user_param).ok()?;
     serde_json::from_str::<User>(&decoded_json).ok()
+}
+
+#[derive(serde::Serialize)]
+struct TelegramMessage {
+    chat_id: String,
+
+    #[serde(skip_serializing_if = "Option::is_none")]
+    message_thread_id: Option<i32>,
+
+    text: String,
+    parse_mode: String,
+
+    #[serde(skip_serializing_if = "Option::is_none")]
+    disable_web_page_preview: Option<bool>,
+}
+
+pub async fn post(
+    post: String,
+    chat_id: String,
+    thread_id: Option<i32>,
+    bot_token: &str,
+
+    client: &Client,
+) -> Result<(), reqwest::Error> {
+    let url = format!("https://api.telegram.org/bot{}/sendMessage", bot_token);
+
+    // let thread_id = match mode {
+    //     Mode::Survival => 2, // Survival thread ID
+    //     Mode::FCFS => 14,     // FCFS thread ID
+    // };
+
+    let payload = TelegramMessage {
+        chat_id: chat_id,
+        message_thread_id: thread_id, // The "Winners List" thread
+        text: post,
+        parse_mode: "HTML".to_string(),
+        disable_web_page_preview: Some(true), // Keeps the list clean if seeds look like links
+    };
+
+    let response = client
+        .post(url)
+        .json(&payload)
+        .send()
+        .await?;
+
+    // 3. Robust Error Logging
+    if !response.status().is_success() {
+        let status = response.status();
+        let err_body = response.text().await.unwrap_or_default();
+        eprintln!("Telegram API Error (Status {}): {}", status, err_body);
+        return Ok(());
+    }
+
+    // println!("Successfully posted winners to Telegram Topic {}", thread_id);
+    Ok(())
+}
+
+pub async fn notify(
+    user_id: i64, 
+    text: &str,
+    bot_token: &str,
+
+    client: &Client,
+) -> Result<(), reqwest::Error> {
+    let url = format!("https://api.telegram.org/bot{}/sendMessage", bot_token);
+
+    let payload = serde_json::json!({
+        "chat_id": user_id, // In your app, user_id is usually the Telegram chat_id
+        "text": text,
+        "parse_mode": "HTML"
+    });
+
+    client
+        .post(url)
+        .json(&payload)
+        .send()
+        .await?;
+
+    Ok(())
 }
