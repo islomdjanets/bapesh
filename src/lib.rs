@@ -36,7 +36,9 @@ pub mod tasker;
 
 #[cfg(feature = "s3")]
 pub mod S3;
-// pub mod s3;
+
+#[cfg(feature = "market")]
+pub mod market;
 
 // #[cfg(feature = "websocket")]
 // pub mod ws;

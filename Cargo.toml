@@ -69,6 +69,7 @@ telegram = ["hmac", "sha2", "urlencoding", "hex"]
 currency = ["rust_decimal", "reqwest"]
 auth = ["jsonwebtoken", "axum", "hyper", "tower-http", "telegram"]
 s3 = ["aws-config", "aws-sdk-s3", "reqwest"]
+market = ["rust_decimal", "reqwest"]
 # tls = ["tokio-rustls", "rustls", "rustls-pemfile"]
 db = ["sqlx"]
 

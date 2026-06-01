@@ -330,3 +330,44 @@ pub fn i32_to_decimal(value: i32) -> Option<Decimal> {
 pub fn i64_to_decimal(value: i64) -> Option<Decimal> {
     Decimal::from_i64(value)
 }
+
+pub async fn transfer(
+    currency: &Currency,
+    amount: &Decimal,
+
+    user_id: i64,
+    receiver_id: i64,
+
+    client: &reqwest::Client,
+    internal_secret: &String,
+) -> Result<(), (StatusCode, String)> {
+    let prestige_url = "https://prestige.up.railway.app";
+
+    let currency_id: u16 = (*currency).into();
+    let external_url = format!(
+        "{}/balance/transfer/{}/{}/{}/{}", 
+        prestige_url, currency_id, amount, user_id, receiver_id,
+    );
+    
+    // let tasker_host = env::get("TASKER_HOST").unwrap_or_default();
+
+    let resp = client
+        .post(&external_url)
+        .header("X-Internal-Secret", internal_secret)
+        // .header("Tasker-Host", tasker_host)
+        .send()
+        .await
+        .map_err(|e| {
+            eprintln!("Network Error: {:?}", e);
+            (StatusCode::BAD_GATEWAY, "Balance service unreachable".to_string())
+        })?;
+    
+    if !resp.status().is_success() {
+        let err = resp.text().await.unwrap_or_default();
+        let message = format!("External transfer failed: {}", err);
+        println!("{}", message);
+        return Err((StatusCode::INTERNAL_SERVER_ERROR, message));
+    }
+
+    Ok(())
+}
