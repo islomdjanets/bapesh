@@ -337,6 +337,7 @@ pub async fn transfer(
 
     user_id: i64,
     receiver_id: i64,
+    fee: &Decimal,
 
     client: &reqwest::Client,
     internal_secret: &String,
@@ -345,8 +346,8 @@ pub async fn transfer(
 
     let currency_id: u16 = (*currency).into();
     let external_url = format!(
-        "{}/balance/transfer/{}/{}/{}/{}", 
-        prestige_url, currency_id, amount, user_id, receiver_id,
+        "{}/balance/transfer/{}/{}/{}/{}/{}", 
+        prestige_url, currency_id, amount, user_id, receiver_id, fee,
     );
     
     // let tasker_host = env::get("TASKER_HOST").unwrap_or_default();
