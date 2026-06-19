@@ -246,3 +246,50 @@ pub async fn upload(
 
     Some(result.unwrap())
 }
+
+pub fn guess_content_type(bytes: &[u8]) -> &'static str {
+    if bytes.is_empty() {
+        return "application/octet-stream";
+    }
+
+    // GLB binary file starts with ASCII "glTF"
+    if bytes.starts_with(b"glTF") {
+        return "model/gltf-binary";
+    }
+
+    // Detect normal binary formats: png, jpeg, webp, gif, mp4, zip, etc.
+    if let Some(kind) = infer::get(bytes) {
+        return kind.mime_type();
+    }
+
+    // Text-based detection.
+    // This is only a guess because JSON/OBJ/SVG/etc. are text formats.
+    // let trimmed = trim_utf8_bom_and_whitespace(bytes);
+
+    // if decor_type == "model" {
+    //     // .gltf is JSON. Check for common glTF structure.
+    //     if let Ok(json) = serde_json::from_slice::<serde_json::Value>(trimmed) {
+    //         if json.get("asset")
+    //             .and_then(|asset| asset.get("version"))
+    //             .is_some()
+    //         {
+    //             return "model/gltf+json";
+    //         }
+    //     }
+
+    //     // Very rough OBJ guess.
+    //     if let Ok(text) = std::str::from_utf8(trimmed) {
+    //         if text.lines().take(20).any(|line| {
+    //             line.starts_with("v ")
+    //                 || line.starts_with("vn ")
+    //                 || line.starts_with("vt ")
+    //                 || line.starts_with("f ")
+    //                 || line.starts_with("o ")
+    //         }) {
+    //             return "model/obj";
+    //         }
+    //     }
+    // }
+
+    "application/octet-stream"
+}

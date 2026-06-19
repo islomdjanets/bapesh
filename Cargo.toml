@@ -61,6 +61,7 @@ reqwest = {version = "0.12.5", features = ["json"], optional = true}
 # s3
 aws-config = {version = "1.5", optional = true}
 aws-sdk-s3 = {version = "1.5", optional = true}
+infer = {version = "0.16", optional = true}
 
 [features]
 default = []
@@ -68,7 +69,7 @@ tasker = ["reqwest"]
 telegram = ["hmac", "sha2", "urlencoding", "hex", "reqwest"]
 currency = ["rust_decimal", "reqwest"]
 auth = ["jsonwebtoken", "axum", "hyper", "tower-http", "telegram"]
-s3 = ["aws-config", "aws-sdk-s3", "reqwest"]
+s3 = ["aws-config", "aws-sdk-s3", "reqwest", "infer"]
 market = ["rust_decimal", "reqwest"]
 # tls = ["tokio-rustls", "rustls", "rustls-pemfile"]
 db = ["sqlx"]
