@@ -6,6 +6,8 @@ use sha2::{Sha256};
 use std::{error::Error};
 use serde::{Serialize, Deserialize};
 
+use crate::env;
+
 // #[derive(Debug, Serialize, Deserialize)]
 // pub struct User {
 //     pub id: i64,
@@ -408,3 +410,116 @@ pub async fn notify(
 
     Ok(())
 }
+
+// pub async fn profile_picture(
+//     client: &Client,
+//     Query(params): Query<ProfilePictureParams>,
+// ) -> Result<Response, AppError> {
+//     let bot_token = env::get("TOKEN")
+//         .expect("TOKEN IS NOT SET");
+
+//     let user_id = params.user_id;
+
+//     let url = format!(
+//         "https://api.telegram.org/bot{}/getUserProfilePhotos?user_id={}",
+//         bot_token, user_id
+//     );
+//     let response = client
+//         .get(&url)
+//         .send()
+//         .await?;
+//         // .map_err(AppError::from);
+
+//     if response.is_err() {
+//         println!("Error fetching user profile photos: {:?}", response.as_ref().err());
+//         return Err(AppError::from(response.err().unwrap()));
+//     }
+
+//     let response = response
+//         .unwrap()
+//         .json()
+//         .await
+//         .map_err(AppError::from);
+
+//     if response.is_err() {
+//         println!("Error parsing user profile photos response: {:?}", response.as_ref().err());
+//         return Err(AppError::from(response.err().unwrap()));
+//     }
+
+//     let response: TelegramResponse<UserProfilePhotos> = response.unwrap();
+
+//     if !response.ok || response.result.is_none() || response.result.as_ref().unwrap().photos.is_empty() {
+//         // println!("No profile photos found for user_id: {}", user_id);
+//         return Err(AppError::NotFound("No profile picture found".to_string()));
+//     }
+
+//     let file_id = response.result.unwrap().photos[0].last().unwrap().file_id.clone();
+
+//     let url = format!(
+//         "https://api.telegram.org/bot{}/getFile?file_id={}",
+//         bot_token, &file_id
+//     );
+//     let response: TelegramResponse<FileResponse> = state.client
+//         .get(&url)
+//         .send()
+//         .await
+//         .map_err(AppError::from)?
+//         .json()
+//         .await
+//         .map_err(AppError::from)?;
+
+//     if !response.ok || response.result.is_none() {
+//         println!("Failed to get file path for file_id: {}", file_id);
+//         return Err(AppError::Internal("Failed to get file path".to_string()));
+//     }
+
+//     let file_path = response.result.unwrap().file_path;
+
+//     let file_url = format!("https://api.telegram.org/file/bot{}/{}", bot_token, file_path);
+//     let response = state.client
+//         .get(&file_url)
+//         .send()
+//         .await
+//         .map_err(AppError::from)?;
+
+//     let content_type = {
+//         let from_headers = response
+//             .headers()
+//             .get("content-type")
+//             .and_then(|v| v.to_str().ok())
+//             .map(String::from);
+
+//         match from_headers {
+//             Some(ct) if ct != "application/octet-stream" => ct,
+//             _ => {
+//                 if file_path.ends_with(".jpg") || file_path.ends_with(".jpeg") {
+//                     "image/jpeg".to_string()
+//                 } else if file_path.ends_with(".png") {
+//                     "image/png".to_string()
+//                 } else if file_path.ends_with(".svg") {
+//                     "image/svg+xml".to_string()
+//                 } else {
+//                     "image/jpeg".to_string() // Default
+//                 }
+//             }
+//         }
+//     };
+//     let image_bytes = response.bytes().await.map_err(AppError::from)?;
+
+//     let cache_duration_days = 7;
+
+//     Ok((
+//         StatusCode::OK,
+//         [
+//             (header::CONTENT_TYPE, content_type),
+//             (
+//                 header::CACHE_CONTROL,
+//                 format!("public, max-age={}, stale-while-revalidate=604800", 86400 * cache_duration_days)
+//             ),
+//             (header::ETAG, format!("\"{}\"", file_id)), // file_id is stable per photo
+//         ],
+//         // [(header::CONTENT_TYPE, content_type)],
+//         image_bytes.to_vec(),
+//     )
+//         .into_response())
+// }
