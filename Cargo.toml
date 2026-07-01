@@ -64,7 +64,7 @@ aws-sdk-s3 = {version = "1.5", optional = true}
 infer = {version = "0.16", optional = true}
 
 [features]
-default = ["tasker"]
+default = []
 tasker = ["reqwest", "sqlx"]
 telegram = ["hmac", "sha2", "urlencoding", "hex", "reqwest"]
 currency = ["rust_decimal", "reqwest"]
