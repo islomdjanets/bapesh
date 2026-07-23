@@ -36,7 +36,7 @@ pub async fn spend(
     let body: serde_json::Value = resp.json().await.unwrap_or_default();
     match status {
         reqwest::StatusCode::OK => Ok(EnergyOutcome::Spent(body)),
-        reqwest::StatusCode::CONFLICT => Ok(EnergyOutcome::LimitReached(body)),
+        reqwest::StatusCode::CONFLICT => Err(body.to_string()),
         s => Err(format!("energy spend failed ({s}): {body}")),
     }
 }
@@ -87,7 +87,7 @@ pub async fn refund(
     let body: serde_json::Value = resp.json().await.unwrap_or_default();
     match status {
         reqwest::StatusCode::OK => Ok(EnergyOutcome::Refund(body)),
-        reqwest::StatusCode::CONFLICT => Ok(EnergyOutcome::LimitReached(body)),
+        // reqwest::StatusCode::CONFLICT => Err(EnergyOutcome::LimitReached(body)),
         s => Err(format!("energy refund failed ({s}): {body}")),
     }
 }
