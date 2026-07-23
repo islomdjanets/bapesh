@@ -45,16 +45,17 @@ impl Debug for Currency {
     }
 }
 
-impl From<&str> for Currency {
-    fn from(s: &str) -> Self {
-        match s {
+impl TryFrom<&str> for Currency {
+    type Error = ();
+    fn try_from(s: &str) -> Result<Self, ()> {
+        Ok(match s {
             "PRESTIGE" => Currency::PRESTIGE,
             "STARS" => Currency::STARS,
             "TICKETS" => Currency::TICKETS,
             "TON" => Currency::TON,
             "USDT" => Currency::USDT,
-            _ => panic!("Unknown currency type: {}", s),
-        }
+            _ => return Err(()),
+        })
     }
 }
 
@@ -70,16 +71,17 @@ impl AsRef<str> for Currency {
     }
 }
 
-impl From<u16> for Currency {
-    fn from(value: u16) -> Self {
-        match value {
+impl TryFrom<u16> for Currency {
+    type Error = ();
+    fn try_from(value: u16) -> Result<Self, ()> {
+        Ok(match value {
             1 => Currency::PRESTIGE,
             2 => Currency::STARS,
             3 => Currency::TICKETS,
             4 => Currency::TON,
             5 => Currency::USDT,
-            _ => panic!("Unknown currency type: {}", value),
-        }
+            _ => return Err(()),
+        })
     }
 }
 
@@ -95,16 +97,17 @@ impl Into<u16> for Currency {
     }
 }
 
-impl From<String> for Currency {
-    fn from(value: String) -> Self {
-        match value.to_uppercase().as_str() {
+impl TryFrom<String> for Currency {
+    type Error = ();
+    fn try_from(value: String) -> Result<Self, ()> {
+        Ok(match value.to_uppercase().as_str() {
             "PRESTIGE" => Currency::PRESTIGE,
             "STARS" => Currency::STARS,
             "TICKETS" => Currency::TICKETS,
             "TON" => Currency::TON,
             "USDT" => Currency::USDT,
-            _ => panic!("Unknown currency type: {}", value),
-        }
+            _ => return Err(()),
+        })
     }
 }
 
@@ -117,9 +120,17 @@ impl std::fmt::Display for Currency {
             Currency::TON => "TON",
             Currency::USDT => "USDT",
         };
-        write!(f, "{}", currency_str)
+
+        return write!(f, "{}", currency_str);
     }
 }
+
+pub fn parse(id: i16) -> Result<Currency, (StatusCode, String)> {
+    u16::try_from(id).ok()
+        .and_then(|v| Currency::try_from(v).ok())
+        .ok_or((StatusCode::BAD_REQUEST, "Unknown currency".into()))
+}
+
 
 pub enum RoundMode {
     Nearest, // Standard rounding: .5 up, .4 down
