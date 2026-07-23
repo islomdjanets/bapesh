@@ -3,7 +3,7 @@ use hmac::{Hmac, Mac};
 use reqwest::Client;
 use sha2::{Sha256};
 
-use std::{error::Error};
+use std::{eprintln, error::Error};
 use serde::{Serialize, Deserialize};
 
 use crate::env;
@@ -290,6 +290,19 @@ pub fn validate_init_data(raw_init_data: &str, bot_token: &str) -> Result<bool, 
 
     if provided_hash.is_empty() {
         return Err("No hash found".into());
+    }
+    
+    const MAX_INIT_DATA_AGE_SECS: i64 = 3600; // 1 hour is plenty for a mini-app launch
+
+    let auth_date: i64 = params.iter()
+        .find(|(k, _)| k == "auth_date")
+        .and_then(|(_, v)| v.parse().ok())
+        .ok_or("Missing auth_date")?;
+
+    let age = chrono::Utc::now().timestamp() - auth_date;
+    if age > MAX_INIT_DATA_AGE_SECS || age < -300 {
+        eprintln!("auth_data is wrong");
+        return Ok(false); // stale (replayed) or clock-skewed init data
     }
 
     // let auth_date = params.iter().find(|(k, _)| k == "auth_date")...
