@@ -1,4 +1,4 @@
-use std::str::FromStr;
+use std::{str::FromStr, sync::OnceLock};
 
 use chrono::{Datelike, NaiveDate, NaiveTime, TimeZone, Utc};
 use reqwest::Response;
@@ -11,9 +11,6 @@ pub async fn new_action_with_host(
     client: &reqwest::Client,
     host: String,
 ) -> Result<Response, reqwest::Error> {
-
-    // let host = env::get("TASKER_HOST")
-    //      .expect("TASKER_HOST IS NOT SETUP");
 
     client
         .post(format!("{host}/actions/{action_type}/{user_id}"))
@@ -35,14 +32,19 @@ pub async fn new_action_with_host(
 
 }
 
+static TASKER: OnceLock<String> = OnceLock::new();
+
+fn tasker_host() -> &'static str {
+    TASKER.get_or_init(|| env::get("TASKER_HOST").expect("TASKER_HOST IS NOT SET"))
+}
+
 pub async fn new_action(
     action_type: &str,
     user_id: i64,
     client: &reqwest::Client
 ) -> Result<Response, reqwest::Error> {
 
-    let host = env::get("TASKER_HOST")
-        .expect("TASKER_HOST IS NOT SETUP");
+    let host = tasker_host();
 
     client
         .post(format!("{host}/actions/{action_type}/{user_id}"))
