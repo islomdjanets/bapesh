@@ -294,16 +294,16 @@ pub fn validate_init_data(raw_init_data: &str, bot_token: &str) -> Result<bool, 
     
     const MAX_INIT_DATA_AGE_SECS: i64 = 3600; // 1 hour is plenty for a mini-app launch
 
-    let auth_date: i64 = params.iter()
-        .find(|(k, _)| k == "auth_date")
-        .and_then(|(_, v)| v.parse().ok())
-        .ok_or("Missing auth_date")?;
+    // let auth_date: i64 = params.iter()
+    //     .find(|(k, _)| k == "auth_date")
+    //     .and_then(|(_, v)| v.parse().ok())
+    //     .ok_or("Missing auth_date")?;
 
-    let age = chrono::Utc::now().timestamp() - auth_date;
-    if age > MAX_INIT_DATA_AGE_SECS || age < -300 {
-        eprintln!("auth_data is wrong");
-        return Ok(false); // stale (replayed) or clock-skewed init data
-    }
+    // let age = chrono::Utc::now().timestamp() - auth_date;
+    // if age > MAX_INIT_DATA_AGE_SECS || age < -300 {
+    //     eprintln!("auth_data is wrong");
+    //     return Ok(false); // stale (replayed) or clock-skewed init data
+    // }
 
     // let auth_date = params.iter().find(|(k, _)| k == "auth_date")...
     // if current_time - auth_date > 86400 { return Ok(false); }
