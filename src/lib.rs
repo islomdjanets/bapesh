@@ -28,6 +28,9 @@ pub mod telegram;
 #[cfg(feature = "currency")]
 pub mod currency;
 
+#[cfg(feature = "energy")]
+pub mod energy;
+
 #[cfg(feature = "auth")]
 pub mod auth;
 
