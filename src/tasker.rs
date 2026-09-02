@@ -5,6 +5,12 @@ use reqwest::Response;
 
 use crate::env;
 
+/// Records one action for a user against the tasker service at `host`.
+///
+/// `POST /actions/{type}/{user_id}` names the player in the *path* and carries
+/// no body, so the `X-Internal-Secret` header is the only thing separating a
+/// real caller from anyone who can reach the host. Without it, whoever finds the
+/// URL can complete any player's tasks and collect the rewards.
 pub async fn new_action_with_host(
     action_type: &str,
     user_id: i64,
@@ -14,58 +20,206 @@ pub async fn new_action_with_host(
 
     client
         .post(format!("{host}/actions/{action_type}/{user_id}"))
+        .header("X-Internal-Secret", internal_secret())
         .send()
         .await
-        // let now = parse_from_rfc3339(
-        //     &now().to_string()
-        // ).unwrap();
-        // // now.setHours(0, 0, 0, 0);
-        // let timestamp = to_rfc3339(now);
-
-        // const key = "actions";
-        // // const actions = DATA.$(key).get(timestamp) || [];
-        // await DATA.update_map(key, timestamp, action_type);
-        // // console.log(key, DATA.$(key).get(timestamp));
-
-
-        // format: {action_type}:{hour-minute}
-
 }
 
 static TASKER: OnceLock<String> = OnceLock::new();
 
-fn tasker_host() -> &'static str {
-    TASKER.get_or_init(|| env::get("TASKER_HOST").expect("TASKER_HOST IS NOT SET"))
+/// Railway's private address for the tasker service, used when `TASKER_HOST`
+/// says nothing.
+///
+/// Private rather than public because of what the route above looks like: the
+/// player is in the path, so keeping the traffic off the public internet is
+/// worth more than one URL that works everywhere. Port 8080 is what tasker
+/// binds, on `[::]`, which is what Railway's IPv6-only internal DNS needs.
+pub const DEFAULT_HOST: &str = "http://tasker.railway.internal:8080";
+
+/// Where this deployment's tasker lives.
+///
+/// Falls back to `DEFAULT_HOST` rather than panicking on a missing
+/// `TASKER_HOST`: a service deployed beside tasker on Railway should not have to
+/// name it, and taking the whole process down over an unset variable is a poor
+/// trade for a task counter. Public so a caller can report it at boot.
+pub fn host() -> &'static str {
+    TASKER.get_or_init(|| {
+        match env::get("TASKER_HOST") {
+            Ok(h) if !h.trim().is_empty() => h.trim().trim_end_matches('/').to_string(),
+            _ => DEFAULT_HOST.to_string(),
+        }
+    })
 }
 
+static SECRET: OnceLock<String> = OnceLock::new();
+
+/// The shared secret proving a call to `/actions` came from one of our own
+/// services, matched against the tasker deployment's own `INTERNAL_SECRET`.
+///
+/// Read from the environment rather than taken as an argument so that adding
+/// authentication did not have to touch every call site in every project. Empty
+/// when unset, which the tasker rejects — a loud 400 at the tasker, rather than
+/// a silently unauthenticated write.
+fn internal_secret() -> &'static str {
+    SECRET.get_or_init(|| {
+        let secret = env::get("INTERNAL_SECRET").unwrap_or_default();
+        if secret.is_empty() {
+            println!("INTERNAL_SECRET is not set — tasker will reject every action");
+        }
+        secret
+    })
+}
+
+/// Records one action for a user against this deployment's tasker.
 pub async fn new_action(
     action_type: &str,
     user_id: i64,
     client: &reqwest::Client
 ) -> Result<Response, reqwest::Error> {
 
-    let host = tasker_host();
+    new_action_with_host(action_type, user_id, client, host().to_string()).await
+}
 
-    client
-        .post(format!("{host}/actions/{action_type}/{user_id}"))
-        .send()
-        .await
-        // let now = parse_from_rfc3339(
-        //     &now().to_string()
-        // ).unwrap();
-        // // now.setHours(0, 0, 0, 0);
-        // let timestamp = to_rfc3339(now);
+/// The tables every tasker deployment needs, as one idempotent script.
+///
+/// Tasker is one codebase deployed once per project, each instance pointed at
+/// that project's own database, so this schema is created N times over N
+/// databases and has no project column anywhere — the deployment topology is
+/// the scoping. It lives here, beside the queries below that read these tables,
+/// so that the projects hosting them do not each keep a copy that drifts.
+///
+/// Safe to run repeatedly. Apply it with `migrate`.
+pub const SCHEMA: &str = r#"
+-- Labels, not ordinals, are the contract: sqlx maps these to the tasker
+-- service's Rust enums by name, so the declaration order is free but every
+-- label must match a variant's snake_case spelling. A label missing here fails
+-- at query time inside tasker, not at deploy time.
+DO $$ BEGIN
+    CREATE TYPE task_type AS ENUM (
+        'like_video', 'subscribe_social', 'comment_social', 'share_social',
+        'premium_social', 'connect_social', 'launch_app', 'log_in', 'check_in',
+        'invite', 'link', 'recharge', 'status_social', 'watch_ad', 'beta',
+        'deposit', 'withdraw', 'swap', 'connect_wallet', 'custom'
+    );
+EXCEPTION WHEN duplicate_object THEN NULL; END $$;
 
-        // const key = "actions";
-        // // const actions = DATA.$(key).get(timestamp) || [];
-        // await DATA.update_map(key, timestamp, action_type);
-        // // console.log(key, DATA.$(key).get(timestamp));
+DO $$ BEGIN
+    CREATE TYPE task_category AS ENUM (
+        'daily', 'weekly', 'monthly', 'seasonal', 'timed',
+        'social', 'partner', 'special', 'custom'
+    );
+EXCEPTION WHEN duplicate_object THEN NULL; END $$;
 
-    
+-- One row per player who has ever done anything task-shaped.
+--
+-- `completed` maps a period key to the task names finished in it:
+--   {"2026-09-02": ["daily_play_3"], "2026-W36": ["weekly_publish"],
+--    "permanent": ["first_game"]}
+-- The key comes from the task's category, which is what makes a daily task
+-- repeat and a special task not.
+--
+-- No foreign key to a users table: the row is created by the first action
+-- posted for an id, and tasker is a separate service that should not fail on
+-- the host project's insert ordering.
+CREATE TABLE IF NOT EXISTS taskers (
+    id BIGINT NOT NULL PRIMARY KEY,
+    last_login TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
 
-        // format: {action_type}:{hour-minute}
+    completed JSONB DEFAULT '{}'::JSONB,
 
-        // Ok(())
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+);
+
+-- The task catalogue, edited by hand.
+--
+-- `name` is the identity, not `id`: it is what lands in `taskers.completed` and
+-- what rewards are looked up by. Renaming a task after anyone has completed it
+-- orphans their completion and they can earn it again.
+CREATE TABLE IF NOT EXISTS tasker_tasks (
+    id SERIAL PRIMARY KEY,
+    name VARCHAR(50) NOT NULL,
+
+    type task_type NOT NULL DEFAULT 'like_video',
+    category task_category NOT NULL DEFAULT 'daily',
+
+    rewards JSONB NOT NULL DEFAULT '{}'::JSONB,
+    metadata JSONB NOT NULL DEFAULT '{}'::JSONB,
+
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP NOT NULL
+);
+
+-- Rewards are read by name on every completion; without this that is a seq
+-- scan. Unique because two rows sharing a name make that lookup fail outright,
+-- and because it is what lets a seed file upsert.
+CREATE UNIQUE INDEX IF NOT EXISTS tasker_tasks_name ON tasker_tasks (name);
+
+-- The event log every counted task is measured against.
+--
+-- Append-only and never deduplicated: progress is count(*) over a time window,
+-- so a daily task counts today's rows, a weekly one this week's, and a special
+-- one every row ever written. Deleting from here silently un-completes tasks
+-- that were in progress.
+CREATE TABLE IF NOT EXISTS tasker_actions (
+    id BIGSERIAL PRIMARY KEY,
+    user_id BIGINT NOT NULL,
+    -- The real constraint on every project's action vocabulary. Tasker rejects
+    -- a longer name with a 400 rather than truncating it, so an overlong name
+    -- is a task that never progresses.
+    action_type VARCHAR(16) NOT NULL,
+    created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
+);
+
+-- Every read of this table is (user, type, window). A two-column index leaves
+-- the type as a filter over every action the player has ever taken.
+CREATE INDEX IF NOT EXISTS idx_tasker_actions_user_type_created
+    ON tasker_actions (user_id, action_type, created_at);
+
+-- Rhai source, keyed by the slug a task's `metadata.script` names.
+CREATE TABLE IF NOT EXISTS tasker_scripts (
+    id SERIAL PRIMARY KEY,
+    slug TEXT UNIQUE NOT NULL,
+    code TEXT NOT NULL,
+
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+-- Ad-network postbacks, keyed by the network's own event id so a duplicate
+-- callback cannot pay twice.
+CREATE TABLE IF NOT EXISTS tasker_ads (
+    ymid TEXT PRIMARY KEY,
+    user_id BIGINT NOT NULL,
+    event_type TEXT NOT NULL,
+    payout NUMERIC(20, 10) NOT NULL,
+    created_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_tasker_ads_user ON tasker_ads (user_id);
+
+CREATE TABLE IF NOT EXISTS tasker_campaigns (
+    id SERIAL PRIMARY KEY,
+
+    name VARCHAR(30) NOT NULL,
+    tasks JSONB NOT NULL DEFAULT '{}'::JSONB,
+
+    rewards JSONB NOT NULL DEFAULT '{}'::JSONB,
+    metadata JSONB NOT NULL DEFAULT '{}'::JSONB,
+
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+"#;
+
+/// Applies `SCHEMA` to `pool`.
+///
+/// Sent as one multi-statement string rather than split and executed
+/// individually, which is what keeps the `DO $$ ... $$` blocks intact — a naive
+/// split on semicolons cuts them in half. `sqlx::raw_sql` runs the batch in a
+/// single implicit transaction, so a failure leaves nothing half-applied.
+///
+/// Idempotent, but still a deploy step rather than something to run on boot:
+/// a rolling restart would otherwise have N instances running DDL at once.
+pub async fn migrate(pool: &sqlx::PgPool) -> Result<(), sqlx::Error> {
+    sqlx::raw_sql(SCHEMA).execute(pool).await?;
+    Ok(())
 }
 
 pub async fn check_weekly_task(pool: &sqlx::PgPool, action_type: &str, user_id: i64) -> i64 {
