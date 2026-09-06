@@ -24,7 +24,7 @@ pub async fn spend(
     internal_secret: &str,
 ) -> Result<EnergyOutcome, String> {
     let resp = client
-        .post("https://prestige.up.railway.app/energy/spend")
+        .post(format!("{}/energy/spend", crate::prestige::host()))
         .header("X-Internal-Secret", internal_secret)
         .json(&serde_json::json!({
             "user_id": user_id, "amount": amount,
@@ -51,7 +51,7 @@ pub async fn grant(
     internal_secret: &str,
 ) -> Result<EnergyOutcome, String> {
     let resp = client
-        .post("https://prestige.up.railway.app/energy/grant")
+        .post(format!("{}/energy/grant", crate::prestige::host()))
         .header("X-Internal-Secret", internal_secret)
         .json(&serde_json::json!({
             "user_id": user_id, "amount": amount,
@@ -75,7 +75,7 @@ pub async fn refund(
     internal_secret: &str,
 ) -> Result<EnergyOutcome, String> {
     let resp = client
-        .post("https://prestige.up.railway.app/energy/refund")
+        .post(format!("{}/energy/refund", crate::prestige::host()))
         .header("X-Internal-Secret", internal_secret)
         .json(&serde_json::json!({
             "project": project_name(),

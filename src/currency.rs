@@ -216,7 +216,7 @@ pub async fn add_multiple(
     client: &reqwest::Client,
     internal_secret: &String,
 ) -> Result<(), (StatusCode, String)> {
-    let prestige_url = "https://prestige.up.railway.app";
+    let prestige_url = crate::prestige::host();
 
     // 1. Keep the URL clean (only ID in path)
     let external_url = format!("{}/balance/add_currencies/{}", prestige_url, user_id);
@@ -259,7 +259,7 @@ pub async fn add(
     internal_secret: &String,
     is_deposit: bool
 ) -> Result<(), (StatusCode, String)> {
-    let prestige_url = "https://prestige.up.railway.app";
+    let prestige_url = crate::prestige::host();
 
     let currency_id: u16 = (*currency).into();
     let external_url = format!(
@@ -296,7 +296,7 @@ pub async fn sub(
     client: &reqwest::Client,
     internal_secret: &String,
 ) -> Result<(), (StatusCode, String)> {
-    let prestige_url = "https://prestige.up.railway.app";
+    let prestige_url = crate::prestige::host();
 
     let currency_id: u16 = (*currency).into();
     let external_url = format!(
@@ -354,7 +354,7 @@ pub async fn transfer(
     client: &reqwest::Client,
     internal_secret: &String,
 ) -> Result<String, (StatusCode, String)> {
-    let prestige_url = "https://prestige.up.railway.app";
+    let prestige_url = crate::prestige::host();
 
     let currency_id: u16 = (*currency).into();
     let external_url = format!(

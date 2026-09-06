@@ -48,4 +48,8 @@ pub mod market;
 
 pub mod env;
 
+// Ungated: `currency` and `energy` are separate features and both need this
+// address, so it cannot live inside either one.
+pub mod prestige;
+
 // pub use bapesh_macros::main;
