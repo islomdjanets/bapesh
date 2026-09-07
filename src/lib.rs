@@ -22,6 +22,11 @@ pub mod date;
 #[cfg(feature = "db")]
 pub mod db;
 
+// Applies hand-written .sql files in a caller-supplied order. Behind `db`
+// because that is what carries sqlx.
+#[cfg(feature = "db")]
+pub mod migrate;
+
 #[cfg(feature = "telegram")]
 pub mod telegram;
 
