@@ -252,11 +252,10 @@ CREATE TABLE IF NOT EXISTS tasker_seasons (
     -- Share of the pool for the `players` pool; the rest goes to `creators`.
     -- 100 for a season whose tasks are all one pool.
     player_share INT NOT NULL DEFAULT 100,
-    -- Percent of the qualified field that is paid.
+    -- Percent of the field that is paid. There is no qualifying floor: one
+    -- point puts a player on the board and in the running, and the band --
+    -- a share of the field -- is what does the selecting.
     reward_share INT NOT NULL DEFAULT 30,
-    -- Points a row must reach to count as a participant. See `bapesh::season`
-    -- for why the paid band is a share of the *qualified* field.
-    min_points   INT NOT NULL DEFAULT 0,
     -- Most points one (project, user) may earn per UTC day. 0 is no cap. For
     -- the ecosystem season this is what stops the project with the most
     -- dailies from owning it.
@@ -272,6 +271,9 @@ CREATE TABLE IF NOT EXISTS tasker_seasons (
         player_share BETWEEN 0 AND 100 AND reward_share BETWEEN 1 AND 100
     )
 );
+
+-- The floor the first draft had; the band is the selector now.
+ALTER TABLE tasker_seasons DROP COLUMN IF EXISTS min_points;
 
 CREATE TABLE IF NOT EXISTS tasker_season_points (
     season_id  INT NOT NULL REFERENCES tasker_seasons(id) ON DELETE CASCADE,
@@ -502,4 +504,5 @@ pub async fn check_special_task(pool: &sqlx::PgPool, action_type: &str, user_id:
     
     get_sum_in_range(pool, action_type, user_id, 0, to_ts).await
 }
+
 
