@@ -249,17 +249,18 @@ CREATE TABLE IF NOT EXISTS tasker_seasons (
     -- Whole PRESTIGE. Zero is a valid pool: standings still rank, nobody is
     -- paid. Set it before the season ends; the close reads it.
     pool         BIGINT NOT NULL DEFAULT 0,
-    -- Share of the pool for the `players` pool; the rest goes to `creators`.
-    -- 100 for a season whose tasks are all one pool.
-    player_share INT NOT NULL DEFAULT 100,
-    -- Percent of the field that is paid. There is no qualifying floor: one
-    -- point puts a player on the board and in the running, and the band --
-    -- a share of the field -- is what does the selecting.
+    -- The boards this season ranks, in the order they are shown, each with
+    -- its weight of the prize: `[{"pool": "players", "share": 100}]`. One
+    -- board is the common case and the ecosystem season's. gg_arcade's own
+    -- season ranks players and creators apart, so it names two, 70/30. A
+    -- task asking for a pool the season does not have scores into the first.
+    -- Weights, not percentages, so 70/30 and 1/1 both mean what they say.
+    pools        JSONB NOT NULL DEFAULT '[{"pool": "players", "share": 100}]',
+    -- Percent of the field that is paid. There is no qualifying floor -- one
+    -- point puts a player on the board and in the running -- and no daily
+    -- cap: a task is claimable once per period, so the catalogue is the cap,
+    -- and a player who clears it has earned every point in it.
     reward_share INT NOT NULL DEFAULT 30,
-    -- Most points one (project, user) may earn per UTC day. 0 is no cap. For
-    -- the ecosystem season this is what stops the project with the most
-    -- dailies from owning it.
-    daily_cap    INT NOT NULL DEFAULT 0,
     -- When the window was closed and what it owed written down. The board of
     -- a closed season is not snapshotted: the ledger cannot change after this
     -- (a credit only lands in an open season) and ranks the same way every
@@ -267,13 +268,24 @@ CREATE TABLE IF NOT EXISTS tasker_seasons (
     closed_at    TIMESTAMPTZ,
     created_at   TIMESTAMPTZ NOT NULL DEFAULT now(),
     CONSTRAINT tasker_seasons_window CHECK (ends_at > starts_at),
-    CONSTRAINT tasker_seasons_shares CHECK (
-        player_share BETWEEN 0 AND 100 AND reward_share BETWEEN 1 AND 100
-    )
+    CONSTRAINT tasker_seasons_reward_share CHECK (reward_share BETWEEN 1 AND 100)
 );
 
--- The floor the first draft had; the band is the selector now.
+-- Three columns the first drafts had. The floor: the band is the selector.
+-- The daily cap: the catalogue is the cap. The players' share: `pools` names
+-- every board and its weight. The constraint that named the share goes with
+-- it, and the one on `reward_share` alone is put back for databases that
+-- were created before this.
+ALTER TABLE tasker_seasons DROP CONSTRAINT IF EXISTS tasker_seasons_shares;
 ALTER TABLE tasker_seasons DROP COLUMN IF EXISTS min_points;
+ALTER TABLE tasker_seasons DROP COLUMN IF EXISTS daily_cap;
+ALTER TABLE tasker_seasons DROP COLUMN IF EXISTS player_share;
+ALTER TABLE tasker_seasons ADD COLUMN IF NOT EXISTS pools JSONB NOT NULL
+    DEFAULT '[{"pool": "players", "share": 100}]';
+DO $$ BEGIN
+    ALTER TABLE tasker_seasons
+        ADD CONSTRAINT tasker_seasons_reward_share CHECK (reward_share BETWEEN 1 AND 100);
+EXCEPTION WHEN duplicate_object THEN NULL; END $$;
 
 CREATE TABLE IF NOT EXISTS tasker_season_points (
     season_id  INT NOT NULL REFERENCES tasker_seasons(id) ON DELETE CASCADE,
@@ -504,5 +516,6 @@ pub async fn check_special_task(pool: &sqlx::PgPool, action_type: &str, user_id:
     
     get_sum_in_range(pool, action_type, user_id, 0, to_ts).await
 }
+
 
 
