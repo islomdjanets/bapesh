@@ -57,4 +57,8 @@ pub mod env;
 // address, so it cannot live inside either one.
 pub mod prestige;
 
+// Ungated for the same reason: pure arithmetic over a ranked field, used by
+// every service that runs a season, with no feature of its own to hide behind.
+pub mod season;
+
 // pub use bapesh_macros::main;

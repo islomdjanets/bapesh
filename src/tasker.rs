@@ -130,6 +130,12 @@ CREATE TABLE IF NOT EXISTS taskers (
     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
 );
 
+-- What a season board shows beside the id. Self-reported by the client on
+-- `GET /tasks?name=` -- the player's own display name, which is all initData
+-- ever was -- because the token carries only the id and this database has no
+-- users table of its own.
+ALTER TABLE taskers ADD COLUMN IF NOT EXISTS name VARCHAR(64);
+
 -- The task catalogue, edited by hand.
 --
 -- `name` is the identity, not `id`: it is what lands in `taskers.completed` and
@@ -205,6 +211,124 @@ CREATE TABLE IF NOT EXISTS tasker_campaigns (
     metadata JSONB NOT NULL DEFAULT '{}'::JSONB,
 
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+-- The subject of an action, when it has one: the game a run was of, the item
+-- that was bought. Nullable because most actions have none, and because every
+-- row before this column existed has none. What it buys is `COUNT(DISTINCT
+-- ref)` -- "play five *different* games" -- which a bare count cannot say.
+ALTER TABLE tasker_actions ADD COLUMN IF NOT EXISTS ref BIGINT;
+
+-- ---------------------------------------------------------------------------
+-- Seasons.
+--
+-- A season is a window in which completing tasks earns *points* -- the
+-- `"points"` key of a task's `rewards` -- and at whose close the top share of
+-- the qualified field splits a PRESTIGE pool (`bapesh::season`). Every tasker
+-- instance hosts its own; the instance on the prestige project hosts the
+-- ecosystem-wide one, fed by every other instance forwarding its completions
+-- there (see `tasker_season_outbox`). Same tables, same code, both scopes.
+--
+-- Points are a ledger, not a derivation: a row per (season, project, task,
+-- user, period). That primary key is the reliability story -- it is exactly
+-- what a completion is identified by, so a credit can be retried, forwarded
+-- twice, or replayed after a crash and cannot count twice. The board is
+-- always ranked from it, live or closed; there is no snapshot to drift.
+-- ---------------------------------------------------------------------------
+
+CREATE TABLE IF NOT EXISTS tasker_seasons (
+    id           SERIAL PRIMARY KEY,
+    number       INT NOT NULL UNIQUE,
+    name         VARCHAR(60) NOT NULL DEFAULT '',
+    starts_at    TIMESTAMPTZ NOT NULL,
+    ends_at      TIMESTAMPTZ NOT NULL,
+    -- upcoming -> active -> ended (standings frozen, owed written) -> settled
+    -- (everything owed was paid). `active` is derived from the window by the
+    -- service; `ended` and `settled` are written once and never revisited.
+    status       VARCHAR(12) NOT NULL DEFAULT 'upcoming',
+    -- Whole PRESTIGE. Zero is a valid pool: standings still rank, nobody is
+    -- paid. Set it before the season ends; the close reads it.
+    pool         BIGINT NOT NULL DEFAULT 0,
+    -- Share of the pool for the `players` pool; the rest goes to `creators`.
+    -- 100 for a season whose tasks are all one pool.
+    player_share INT NOT NULL DEFAULT 100,
+    -- Percent of the qualified field that is paid.
+    reward_share INT NOT NULL DEFAULT 30,
+    -- Points a row must reach to count as a participant. See `bapesh::season`
+    -- for why the paid band is a share of the *qualified* field.
+    min_points   INT NOT NULL DEFAULT 0,
+    -- Most points one (project, user) may earn per UTC day. 0 is no cap. For
+    -- the ecosystem season this is what stops the project with the most
+    -- dailies from owning it.
+    daily_cap    INT NOT NULL DEFAULT 0,
+    -- When the window was closed and what it owed written down. The board of
+    -- a closed season is not snapshotted: the ledger cannot change after this
+    -- (a credit only lands in an open season) and ranks the same way every
+    -- time, and `tasker_season_payouts` records what was actually paid.
+    closed_at    TIMESTAMPTZ,
+    created_at   TIMESTAMPTZ NOT NULL DEFAULT now(),
+    CONSTRAINT tasker_seasons_window CHECK (ends_at > starts_at),
+    CONSTRAINT tasker_seasons_shares CHECK (
+        player_share BETWEEN 0 AND 100 AND reward_share BETWEEN 1 AND 100
+    )
+);
+
+CREATE TABLE IF NOT EXISTS tasker_season_points (
+    season_id  INT NOT NULL REFERENCES tasker_seasons(id) ON DELETE CASCADE,
+    -- Which deployment the completion happened in. The instance's own
+    -- PROJECT_NAME for its local rows; the sender's for forwarded ones.
+    project    VARCHAR(32) NOT NULL,
+    user_id    BIGINT NOT NULL,
+    task_name  VARCHAR(50) NOT NULL,
+    period_key VARCHAR(16) NOT NULL,
+    pool       VARCHAR(8) NOT NULL DEFAULT 'players',
+    points     INT NOT NULL,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+    PRIMARY KEY (season_id, project, task_name, user_id, period_key)
+);
+
+CREATE INDEX IF NOT EXISTS tasker_season_points_board
+    ON tasker_season_points (season_id, pool, user_id);
+
+-- Completions waiting to be forwarded to the ecosystem season's instance.
+-- Written in the same transaction as the completion, drained by a loop that
+-- retries with backoff until the other side answers. A row is deleted once
+-- delivered -- including when the other side answers that no season is live,
+-- because points are never banked for a season that has not started.
+CREATE TABLE IF NOT EXISTS tasker_season_outbox (
+    id         BIGSERIAL PRIMARY KEY,
+    user_id    BIGINT NOT NULL,
+    task_name  VARCHAR(50) NOT NULL,
+    period_key VARCHAR(16) NOT NULL,
+    pool       VARCHAR(8) NOT NULL DEFAULT 'players',
+    points     INT NOT NULL,
+    -- When the completion happened; the receiver credits the season whose
+    -- window holds it, so a delayed delivery lands in the right season.
+    at         TIMESTAMPTZ NOT NULL DEFAULT now(),
+    attempts   INT NOT NULL DEFAULT 0,
+    next_at    TIMESTAMPTZ NOT NULL DEFAULT now(),
+    last_error TEXT NOT NULL DEFAULT ''
+);
+
+CREATE INDEX IF NOT EXISTS tasker_season_outbox_due
+    ON tasker_season_outbox (next_at);
+
+-- What a closed season owes, and what has been paid. pending -> sending ->
+-- paid | failed. A `sending` row whose call never answered stays there for a
+-- human: retrying it blindly is how someone gets paid twice.
+CREATE TABLE IF NOT EXISTS tasker_season_payouts (
+    id         BIGSERIAL PRIMARY KEY,
+    season_id  INT NOT NULL REFERENCES tasker_seasons(id) ON DELETE CASCADE,
+    pool       VARCHAR(8) NOT NULL,
+    user_id    BIGINT NOT NULL,
+    rank       INT NOT NULL,
+    tier       VARCHAR(12) NOT NULL DEFAULT '',
+    amount     BIGINT NOT NULL,
+    status     VARCHAR(8) NOT NULL DEFAULT 'pending',
+    error      TEXT NOT NULL DEFAULT '',
+    created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+    paid_at    TIMESTAMPTZ,
+    UNIQUE (season_id, pool, user_id)
 );
 "#;
 
@@ -378,3 +502,4 @@ pub async fn check_special_task(pool: &sqlx::PgPool, action_type: &str, user_id:
     
     get_sum_in_range(pool, action_type, user_id, 0, to_ts).await
 }
+
