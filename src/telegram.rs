@@ -345,6 +345,224 @@ pub fn extract_user(init_data: &str) -> Option<User> {
     serde_json::from_str::<User>(&decoded_json).ok()
 }
 
+// ── the other two ways Telegram signs a login ──────────────────────────────
+//
+// `validate_init_data` above is the bot's own check: HMAC keyed by the bot
+// token, which only that bot's server holds. An identity service that signs
+// people in for *every* bot in the ecosystem needs two more:
+//
+// - **Third-party initData validation.** Since Bot API 7.10 initData carries a
+//   `signature` — Ed25519 over `{bot_id}:WebAppData\n{fields}` — that anyone
+//   can verify against Telegram's published public key, with no bot token at
+//   all. The bot id has to be known, which is what makes it safe to accept: a
+//   service verifies only for the bots it has been told about, so initData
+//   minted for some stranger's bot can never log into an account here.
+// - **The Login Widget** (`oauth.telegram.org`), which is how a person signs
+//   in with Telegram from an ordinary browser. It signs the same way as a bot
+//   webhook rather than as a Mini App: HMAC-SHA256 keyed by `SHA256(token)`,
+//   not by `HMAC("WebAppData", token)`. One byte of difference in the key
+//   derivation, and a validator that gets it wrong fails every login with
+//   nothing to distinguish it from a forgery.
+
+/// Telegram's Ed25519 public key for the production environment, from the
+/// Bot API documentation on validating data for third-party use.
+pub const PUBLIC_KEY: [u8; 32] = [
+    0xe7, 0xbf, 0x03, 0xa2, 0xfa, 0x46, 0x02, 0xaf, 0x45, 0x80, 0x70, 0x3d, 0x88, 0xdd, 0xa5, 0xbb,
+    0x59, 0xf3, 0x2e, 0xd8, 0xb0, 0x2a, 0x56, 0xc1, 0x87, 0xfe, 0x7d, 0x34, 0xca, 0xed, 0x24, 0x2d,
+];
+
+/// The `key=value` pairs of an initData (or Login Widget) query string, URL
+/// decoded, in the order they arrived. `hash` and `signature` come back like
+/// any other field; the validators know which to leave out of the check string.
+pub fn parse_init_data(raw: &str) -> Result<Vec<(String, String)>, Box<dyn Error>> {
+    let mut params = Vec::new();
+
+    for pair in raw.split('&') {
+        if pair.is_empty() {
+            continue;
+        }
+        let mut split = pair.splitn(2, '=');
+        let key = split.next().ok_or("Invalid pair")?;
+        let value = split.next().ok_or("Invalid value")?;
+
+        params.push((key.to_string(), urlencoding::decode(value)?.into_owned()));
+    }
+
+    Ok(params)
+}
+
+/// The data-check-string every Telegram signature is computed over: the
+/// remaining fields sorted by key, `key=value`, joined by newlines.
+fn check_string(params: &[(String, String)], skip: &[&str]) -> String {
+    let mut fields: Vec<&(String, String)> = params
+        .iter()
+        .filter(|(k, _)| !skip.contains(&k.as_str()))
+        .collect();
+    fields.sort_by(|a, b| a.0.cmp(&b.0));
+
+    fields
+        .iter()
+        .map(|(k, v)| format!("{}={}", k, v))
+        .collect::<Vec<_>>()
+        .join("\n")
+}
+
+fn field<'a>(params: &'a [(String, String)], key: &str) -> Option<&'a str> {
+    params.iter().find(|(k, _)| k == key).map(|(_, v)| v.as_str())
+}
+
+/// `auth_date` of a signed payload, as a unix timestamp.
+pub fn auth_date(params: &[(String, String)]) -> Option<i64> {
+    field(params, "auth_date")?.parse().ok()
+}
+
+/// Verifies initData against Telegram's public key, for the bot it names.
+///
+/// `Ok(false)` is a signature that does not verify — for this bot id, or at
+/// all. `Err` is initData with no `signature` field, which a client older than
+/// Bot API 7.10 still sends; the caller decides whether the HMAC path with a
+/// bot token is available instead.
+pub fn validate_init_data_signature(raw: &str, bot_id: i64) -> Result<bool, Box<dyn Error>> {
+    let params = parse_init_data(raw)?;
+    let signature = field(&params, "signature").ok_or("No signature found")?;
+
+    verify_signature(&params, signature, bot_id, &PUBLIC_KEY)
+}
+
+/// The check behind `validate_init_data_signature`, with the key as an
+/// argument so a test can sign with a key it holds.
+pub fn verify_signature(
+    params: &[(String, String)],
+    signature: &str,
+    bot_id: i64,
+    public_key: &[u8; 32],
+) -> Result<bool, Box<dyn Error>> {
+    use base64::Engine;
+
+    let check = format!("{}:WebAppData\n{}", bot_id, check_string(params, &["hash", "signature"]));
+
+    // Documented as base64url; tolerate the padding some encoders add.
+    let signature = base64::engine::general_purpose::URL_SAFE_NO_PAD
+        .decode(signature.trim_end_matches('='))?;
+
+    let key = ring::signature::UnparsedPublicKey::new(&ring::signature::ED25519, public_key);
+    Ok(key.verify(check.as_bytes(), &signature).is_ok())
+}
+
+/// Verifies the fields the Login Widget hands to its callback URL
+/// (`id`, `first_name`, `auth_date`, `hash`, ...), for the bot whose token
+/// this is. The widget only ever signs for the one bot whose domain the page
+/// is on, so unlike initData there is no bot id to name.
+pub fn validate_login_widget(params: &[(String, String)], bot_token: &str) -> Result<bool, Box<dyn Error>> {
+    use sha2::Digest;
+
+    let provided = field(params, "hash").ok_or("No hash found")?;
+    let check = check_string(params, &["hash"]);
+
+    let secret_key = Sha256::digest(bot_token.as_bytes());
+
+    let mut hmac = Hmac::<Sha256>::new_from_slice(&secret_key)?;
+    hmac.update(check.as_bytes());
+
+    Ok(hmac.verify_slice(&hex::decode(provided)?).is_ok())
+}
+
+#[cfg(test)]
+mod signing_tests {
+    use super::*;
+
+    // A Login Widget payload signed by hand with node's crypto for the token
+    // below — the vector is the contract, not the code that recomputes it.
+    const TOKEN: &str = "123456:ABC-DEF1234ghIkl-zyx57W2v1u123ew11";
+    const WIDGET: &str = "id=863009768&first_name=Islom&username=islomdjanets&auth_date=1758240000&hash=";
+
+    fn widget(hash: &str) -> Vec<(String, String)> {
+        parse_init_data(&format!("{}{}", WIDGET, hash)).unwrap()
+    }
+
+    const WIDGET_HASH: &str = "77210ccc9bdb6f5d5bbecd3eaf69b932ee6ab16c33aa432b1ad68c4370130ed3";
+
+    #[test]
+    fn widget_hash_is_hmac_keyed_by_sha256_of_the_token() {
+        assert_eq!(validate_login_widget(&widget(WIDGET_HASH), TOKEN).unwrap(), true);
+    }
+
+    #[test]
+    fn widget_rejects_a_tampered_field_and_the_wrong_key_derivation() {
+        let mut forged = widget(WIDGET_HASH);
+        forged[0].1 = "1".into();
+        assert_eq!(validate_login_widget(&forged, TOKEN).unwrap(), false);
+
+        // The Mini App derivation (`HMAC("WebAppData", token)`) over the same
+        // fields is a different hash, so a widget payload must not pass the
+        // initData validator and vice versa.
+        let as_init_data = format!("{}{}", WIDGET, WIDGET_HASH);
+        assert_eq!(validate_init_data(&as_init_data, TOKEN).unwrap(), false);
+    }
+
+    // initData for bot 42, signed with a throwaway Ed25519 key whose public
+    // half is below. The production key is the constant; the check is the same.
+    const TEST_KEY: [u8; 32] = [
+        0xce, 0xd7, 0x56, 0x7a, 0xb3, 0xfa, 0x44, 0x1d, 0x5e, 0x61, 0x8f, 0x08, 0x2e, 0xf0, 0x97, 0x17,
+        0x6c, 0x13, 0xa6, 0x7a, 0x63, 0x97, 0xb3, 0x24, 0x4f, 0x7e, 0xdc, 0x99, 0xb7, 0xb8, 0x56, 0x8e,
+    ];
+    const INIT: &str = "auth_date=1758240000&user=%7B%22id%22%3A863009768%2C%22first_name%22%3A%22Islom%22%7D&query_id=AAH&hash=00&signature=eD-Zj8WScx6OU9fAsaMmtXCdqnqMnTBDsAdyLrUX19zqgF0XkUdBlM9-xlo5qdrFuM6pZxuW2sWdVKR0mt6yDg";
+
+    fn signed() -> (Vec<(String, String)>, String) {
+        let params = parse_init_data(INIT).unwrap();
+        let signature = field(&params, "signature").unwrap().to_string();
+        (params, signature)
+    }
+
+    #[test]
+    fn signature_verifies_for_the_bot_it_was_issued_to() {
+        let (params, signature) = signed();
+        assert_eq!(verify_signature(&params, &signature, 42, &TEST_KEY).unwrap(), true);
+        // Padding is tolerated.
+        assert_eq!(verify_signature(&params, &format!("{}==", signature), 42, &TEST_KEY).unwrap(), true);
+    }
+
+    #[test]
+    fn signature_fails_for_another_bot_or_a_tampered_field() {
+        let (params, signature) = signed();
+        // The bot id is part of the signed string: initData minted for one bot
+        // is worthless to a service that only knows another.
+        assert_eq!(verify_signature(&params, &signature, 43, &TEST_KEY).unwrap(), false);
+
+        let mut forged = params.clone();
+        forged[0].1 = "1758240001".into();
+        assert_eq!(verify_signature(&forged, &signature, 42, &TEST_KEY).unwrap(), false);
+
+        // Against the real key it is simply not Telegram's signature.
+        assert_eq!(validate_init_data_signature(INIT, 42).unwrap(), false);
+    }
+
+    #[test]
+    fn widget_without_a_hash_is_an_error_not_a_pass() {
+        let params = parse_init_data("id=1&auth_date=1").unwrap();
+        assert!(validate_login_widget(&params, TOKEN).is_err());
+    }
+
+    #[test]
+    fn init_data_without_a_signature_is_an_error_not_a_pass() {
+        assert!(validate_init_data_signature("user=%7B%7D&auth_date=1&hash=00", 1).is_err());
+    }
+
+    #[test]
+    fn check_string_sorts_and_skips() {
+        let params = parse_init_data("b=2&signature=s&a=1&hash=h").unwrap();
+        assert_eq!(check_string(&params, &["hash", "signature"]), "a=1\nb=2");
+        assert_eq!(check_string(&params, &["hash"]), "a=1\nb=2\nsignature=s");
+    }
+
+    #[test]
+    fn parse_decodes_values_and_keeps_order() {
+        let params = parse_init_data("user=%7B%22id%22%3A1%7D&auth_date=5").unwrap();
+        assert_eq!(params[0], ("user".into(), "{\"id\":1}".into()));
+        assert_eq!(auth_date(&params), Some(5));
+    }
+}
+
 #[derive(serde::Serialize)]
 struct TelegramMessage {
     chat_id: String,

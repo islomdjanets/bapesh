@@ -89,29 +89,7 @@ pub fn login(
 
     // login_result
 
-    let user_id = user.id;
-
-    // 1. Create the claims
-    let expiration = Utc::now()
-        .checked_add_signed(Duration::days(60))
-        .expect("valid timestamp")
-        .timestamp();
-
-    let claims = Claims {
-        sub: user_id,
-        iat: Utc::now().timestamp() as usize,
-        exp: expiration as usize,
-    };
-
-    // 2. Sign the token
-    let JWT_SECRET = env::get("JWT_SECRET")
-        .expect("JWT_SECRET IS NOT SETUP").into_bytes();
-
-    let token = encode(
-        &Header::default(),
-        &claims,
-        &EncodingKey::from_secret(&JWT_SECRET),
-    ).unwrap();
+    let token = issue_token(user.id);
 
     // 3. Return the token to the JS engine
     LoginResult {
@@ -119,6 +97,169 @@ pub fn login(
         user: Some(user),
         data: None,
         is_created: true
+    }
+}
+
+/// How long a token is good for. One number for every service, because the
+/// client decides whether to re-login by reading `exp` out of whatever token
+/// it holds, whichever service minted it.
+pub const TOKEN_DAYS: i64 = 60;
+
+/// Mints the bearer token every bapesh service accepts.
+///
+/// HS256 over `Claims`, keyed by the `JWT_SECRET` shared across the ecosystem —
+/// which is what makes a token from prestige valid on gg_arcade, roomtour and
+/// the taskers without any of them calling back. `sub` is the account id and
+/// nothing else is in it: a profile in a 60-day token is stale for 59 of them.
+pub fn issue_token(user_id: i64) -> String {
+    let now = Utc::now();
+    let expiration = now
+        .checked_add_signed(Duration::days(TOKEN_DAYS))
+        .expect("valid timestamp")
+        .timestamp();
+
+    let claims = Claims {
+        sub: user_id,
+        iat: now.timestamp() as usize,
+        exp: expiration as usize,
+    };
+
+    let secret = env::get("JWT_SECRET")
+        .expect("JWT_SECRET IS NOT SETUP").into_bytes();
+
+    encode(
+        &Header::default(),
+        &claims,
+        &EncodingKey::from_secret(&secret),
+    ).expect("HS256 signing cannot fail on a valid secret")
+}
+
+/// The claims of a token this ecosystem issued, or `None` for anything else:
+/// wrong secret, expired, malformed. The same check `AuthenticatedUser` makes,
+/// for the handlers where a token is optional rather than required.
+pub fn verify_token(token: &str) -> Option<Claims> {
+    let secret = env::get("JWT_SECRET")
+        .expect("JWT_SECRET IS NOT SETUP").into_bytes();
+
+    decode::<Claims>(
+        token,
+        &DecodingKey::from_secret(&secret),
+        &Validation::default(),
+    ).ok().map(|data| data.claims)
+}
+
+/// The bearer token on a request, if one was sent. Validity is `verify_token`'s
+/// business; this only finds it.
+pub fn bearer(headers: &axum::http::HeaderMap) -> Option<&str> {
+    headers
+        .get(axum::http::header::AUTHORIZATION)?
+        .to_str().ok()?
+        .strip_prefix("Bearer ")
+}
+
+// ── the Prestige account ──────────────────────────────────────────────────
+//
+// One account per person across every project, held by the prestige service
+// and reachable by three sign-ins (Telegram, Google, Apple). Projects keep
+// their own `users` row — keyed by the same id — for whatever is theirs, and
+// seed it from this on first sight of a token whose `sub` they do not know.
+
+/// One way of signing in that is attached to an account.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct Identity {
+    /// `telegram`, `google` or `apple`.
+    pub provider: String,
+    /// The provider's own stable id for the person: the Telegram user id as a
+    /// string, Google's `sub`, Apple's `sub`.
+    pub subject: String,
+    #[serde(default)]
+    pub email: Option<String>,
+    /// Whatever the provider told us about the person at last sign-in
+    /// (`username`, `first_name`, `photo_url` for Telegram; `name`, `picture`
+    /// for Google). Display data only — nothing here is a credential.
+    #[serde(default)]
+    pub profile: serde_json::Value,
+}
+
+/// A Prestige account, as `GET /auth/me` and `GET /internal/account/{id}`
+/// serve it.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct Account {
+    /// The id every project's `users.id` and every balance is keyed by. For an
+    /// account that started from Telegram this *is* the Telegram user id; for
+    /// one that started from Google or Apple it is allocated by prestige from a
+    /// range no Telegram id can reach.
+    pub id: i64,
+    pub name: String,
+    #[serde(default)]
+    pub email: Option<String>,
+    #[serde(default)]
+    pub avatar_url: Option<String>,
+    #[serde(default)]
+    pub language: Option<String>,
+    #[serde(default)]
+    pub identities: Vec<Identity>,
+}
+
+impl Account {
+    pub fn identity(&self, provider: &str) -> Option<&Identity> {
+        self.identities.iter().find(|i| i.provider == provider)
+    }
+
+    /// The Telegram user id, when Telegram is one of the sign-ins. What a
+    /// project needs before it may call the Bot API about this person — a
+    /// profile photo, a message — since the account id is not one for
+    /// accounts that started elsewhere.
+    pub fn telegram_id(&self) -> Option<i64> {
+        self.identity("telegram")?.subject.parse().ok()
+    }
+
+    /// The account as the `telegram::User` shape every client already reads
+    /// its `/login` response into. `username` comes from the Telegram identity
+    /// when there is one and is otherwise empty — a project that needs a
+    /// handle derives its own, as gg_arcade does.
+    pub fn as_telegram_user(&self) -> telegram::User {
+        let tg = self.identity("telegram");
+        let field = |k: &str| tg
+            .and_then(|i| i.profile.get(k))
+            .and_then(|v| v.as_str())
+            .unwrap_or("")
+            .to_string();
+
+        telegram::User {
+            id: self.id,
+            first_name: self.name.clone(),
+            last_name: field("last_name"),
+            username: field("username"),
+            language_code: self.language.clone().unwrap_or_default(),
+            is_premium: false,
+            allows_write_to_pm: false,
+            photo_url: self.avatar_url.clone().unwrap_or_default(),
+        }
+    }
+}
+
+/// Reads an account from prestige, by id, with the internal secret.
+///
+/// `Ok(None)` is an id prestige has never issued — which, for a token that
+/// verified against the shared secret, means the token was minted by one of
+/// the legacy Telegram logins for a person prestige has not yet seen. Callers
+/// treat that the way they always have: the id is a Telegram id.
+pub async fn fetch_account(
+    client: &reqwest::Client,
+    internal_secret: &str,
+    id: i64,
+) -> Result<Option<Account>, String> {
+    let resp = client
+        .get(format!("{}/internal/account/{}", crate::prestige::host(), id))
+        .header("X-Internal-Secret", internal_secret)
+        .send().await
+        .map_err(|e| format!("prestige unreachable: {e}"))?;
+
+    match resp.status() {
+        reqwest::StatusCode::OK => resp.json().await.map(Some).map_err(|e| format!("prestige answered nonsense: {e}")),
+        reqwest::StatusCode::NOT_FOUND => Ok(None),
+        status => Err(format!("prestige answered {status}")),
     }
 }
 
