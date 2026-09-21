@@ -325,3 +325,23 @@ where
         })
     }
 }
+
+/// `Option<AuthenticatedUser>` -- for a route a guest may call.
+///
+/// No Authorization header at all is `None`: a guest. A header that is there
+/// but does not verify is still a 401, not a guest -- a client that presents
+/// a token means to be someone, and being quietly demoted to nobody would
+/// show it a feed with every like unset and no way to tell why.
+impl<S> axum::extract::OptionalFromRequestParts<S> for AuthenticatedUser
+where
+    S: Send + Sync,
+{
+    type Rejection = (StatusCode, &'static str);
+
+    async fn from_request_parts(parts: &mut Parts, state: &S) -> Result<Option<Self>, Self::Rejection> {
+        if parts.headers.get(axum::http::header::AUTHORIZATION).is_none() {
+            return Ok(None);
+        }
+        <Self as FromRequestParts<S>>::from_request_parts(parts, state).await.map(Some)
+    }
+}
