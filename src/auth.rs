@@ -239,6 +239,83 @@ impl Account {
     }
 }
 
+/// The Telegram login, with prestige told about it.
+///
+/// Validates initData against this bot's token exactly as `login` does, then
+/// asks prestige for the account behind the Telegram user
+/// (`POST /internal/auth/telegram`, internal secret) and hands back the token
+/// *prestige* minted. That token names the account, which is the Telegram id
+/// for almost everyone and is not for a Telegram that was linked to a
+/// Google-first account — the case a locally minted token would get wrong.
+/// It is also what gives the person a `telegram` identity to link Google or
+/// Apple onto later.
+///
+/// Prestige unreachable falls back to the local token rather than failing
+/// the login: the two are the same for a Telegram-first account, and a
+/// Mini App must open when the account service is having a bad minute. The
+/// fallback is logged, because it is the one path that can seat a linked
+/// person on the wrong id.
+pub async fn login_prestige(
+    init_data: &str,
+    bot_token: &str,
+    client: &reqwest::Client,
+    internal_secret: &str,
+) -> LoginResult {
+    let local = login(init_data, bot_token);
+    let Some(user) = local.user.as_ref() else {
+        return local;
+    };
+
+    match attest_telegram(client, internal_secret, user).await {
+        Ok((token, account)) => {
+            let mut profile = account.as_telegram_user();
+            // What initData said about the person right now beats what the
+            // account remembers from last time.
+            profile.username = user.username.clone();
+            profile.is_premium = user.is_premium;
+            profile.allows_write_to_pm = user.allows_write_to_pm;
+            if profile.language_code.is_empty() {
+                profile.language_code = user.language_code.clone();
+            }
+
+            LoginResult { token, user: Some(profile), data: None, is_created: false }
+        }
+        Err(e) => {
+            eprintln!("login: prestige did not answer for telegram user {} ({e}); local token", user.id);
+            local
+        }
+    }
+}
+
+/// Tells prestige a Telegram user signed in with this bot, and gets the
+/// account and its token back. See `login_prestige`.
+pub async fn attest_telegram(
+    client: &reqwest::Client,
+    internal_secret: &str,
+    user: &telegram::User,
+) -> Result<(String, Account), String> {
+    #[derive(Deserialize)]
+    struct Session {
+        token: String,
+        user: Account,
+    }
+
+    let resp = client
+        .post(format!("{}/internal/auth/telegram", crate::prestige::host()))
+        .header("X-Internal-Secret", internal_secret)
+        .json(user)
+        .send().await
+        .map_err(|e| format!("prestige unreachable: {e}"))?;
+
+    let status = resp.status();
+    if !status.is_success() {
+        return Err(format!("prestige answered {status}"));
+    }
+
+    let session: Session = resp.json().await.map_err(|e| format!("prestige answered nonsense: {e}"))?;
+    Ok((session.token, session.user))
+}
+
 /// Reads an account from prestige, by id, with the internal secret.
 ///
 /// `Ok(None)` is an id prestige has never issued — which, for a token that
