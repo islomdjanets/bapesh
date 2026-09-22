@@ -123,6 +123,69 @@ pub async fn get_from_table_new(name: &str, id: &str, pool: &sqlx::Pool<sqlx::Po
     }
 }
 
+/// The key every project stamps on the row it hands a client at login:
+/// whether *this* login is what created it.
+pub const IS_CREATED: &str = "is_created";
+
+/// This project's own `users` row, as JSON, or `None`.
+///
+/// Every project had a byte-identical copy of this. A database error logs and
+/// answers `None`, the same as a missing row — which is safe only because of
+/// what the one caller does next: `load_or_create_user` tries to create, and
+/// the insert fails on the primary key rather than duplicating anybody.
+pub async fn get_user(user_id: i64, pool: &Pool) -> Option<JSON> {
+    match get_from_table("users", user_id, pool).await {
+        Ok(data) => data,
+        Err(e) => {
+            println!("Error fetching user {}: {:?}", user_id, e);
+            None
+        }
+    }
+}
+
+/// The row for this person, creating it on their first visit, with
+/// `is_created` stamped either way.
+///
+/// The find-or-create skeleton every project's `extract_data` had, differing
+/// only in what `create` writes — a handle here, a referral and a room there —
+/// which is why that part is the caller's closure.
+///
+/// **`is_created` is always present now, and always a `bool`.** It used to be
+/// written only on the visit that created the row, so every reader needed
+/// `.as_bool().unwrap_or(false)` and none could tell "returning" from "nobody
+/// wrote the field". A project showing newcomers a tutorial can read it
+/// directly.
+///
+/// It says *this login created the row*: true exactly once, gone by the next
+/// launch. For anything the person must not miss — a tutorial they can
+/// resume, a one-time gift — a column on the row is the durable form, and
+/// this is the signal that sets it.
+pub async fn load_or_create_user<F, Fut>(user_id: i64, pool: &Pool, create: F) -> Option<JSON>
+where
+    F: FnOnce() -> Fut,
+    Fut: std::future::Future<Output = Option<JSON>>,
+{
+    let (mut data, created) = match get_user(user_id, pool).await {
+        Some(data) => (data, false),
+        None => {
+            let Some(data) = create().await else {
+                println!("Failed to create user {}", user_id);
+                return None;
+            };
+            println!("User {} created", user_id);
+            (data, true)
+        }
+    };
+
+    data[IS_CREATED] = JSON::Bool(created);
+    Some(data)
+}
+
+/// Whether a row from `load_or_create_user` was created by that call.
+pub fn is_created(data: &JSON) -> bool {
+    data[IS_CREATED].as_bool().unwrap_or(false)
+}
+
 pub async fn get_from_table(name: &str, id: i64, pool: &sqlx::Pool<sqlx::Postgres>) -> Result<Option<JSON>, StdError> {
     let query = &format!("SELECT * FROM {} WHERE id = $1", name);
     let row = sqlx::query(query)

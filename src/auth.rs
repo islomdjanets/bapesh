@@ -316,6 +316,145 @@ pub async fn attest_telegram(
     Ok((session.token, session.user))
 }
 
+/// Who may use the service right now.
+///
+/// Two settings every project had its own copy of: a coffee break that turns
+/// the service off for everyone, and the admins it stays on for. Read once at
+/// boot and kept on `AppState`.
+pub struct Gate {
+    pub is_coffee_break: bool,
+    pub admins: Vec<i64>,
+}
+
+impl Gate {
+    /// `IS_COFFEE_BREAK` (`true` to close) and `ADMINS` (comma-separated ids).
+    ///
+    /// **Neither is required and neither can fail a boot**, which is the fix
+    /// this carries: two projects parsed `ADMINS` with
+    /// `.expect("Not valid ID")` over `"".split(',')`, so leaving the
+    /// variable unset — or leaving a trailing comma in it — panicked the
+    /// service on startup. An unparseable id is dropped with a line in the
+    /// log instead; the cost of ignoring one is that an admin is treated as
+    /// an ordinary player, and the cost of the panic was the service.
+    pub fn from_env() -> Gate {
+        let gate = Gate::parse(
+            env::get("IS_COFFEE_BREAK").ok().as_deref(),
+            env::get("ADMINS").ok().as_deref(),
+        );
+
+        if gate.is_coffee_break {
+            println!("coffee break: the service is closed to all but {} admin(s)", gate.admins.len());
+        }
+
+        gate
+    }
+
+    /// The reading of those two variables, with nothing read from the
+    /// process -- which is what makes it testable: two tests that each set
+    /// the real environment cannot run beside each other.
+    fn parse(is_coffee_break: Option<&str>, admins: Option<&str>) -> Gate {
+        Gate {
+            is_coffee_break: is_coffee_break
+                .map(|s| s.trim().eq_ignore_ascii_case("true"))
+                .unwrap_or(false),
+
+            admins: admins
+                .unwrap_or_default()
+                .split(',')
+                .map(str::trim)
+                .filter(|s| !s.is_empty())
+                .filter_map(|s| match s.parse::<i64>() {
+                    Ok(id) => Some(id),
+                    Err(_) => {
+                        println!("ADMINS: ignoring {:?}, which is not a user id", s);
+                        None
+                    }
+                })
+                .collect(),
+        }
+    }
+
+    pub fn is_admin(&self, user_id: i64) -> bool {
+        self.admins.contains(&user_id)
+    }
+
+    /// Whether this person may be let in at all. An admin always may, which
+    /// is what makes a coffee break testable from the inside.
+    pub fn allows(&self, user_id: i64) -> bool {
+        !self.is_coffee_break || self.is_admin(user_id)
+    }
+}
+
+/// What a project needs to open a session for a bearer token it has just
+/// accepted: who the person is, and the token to hand back.
+///
+/// Built by `resolve_session`, which is the middle of every project's
+/// `POST /login`. What stays with the project on either side of it is what
+/// genuinely differs: whatever gate it puts in front (a coffee break, an
+/// admin allowlist), its own row creation, and the shape it answers in.
+pub struct Session {
+    /// The person, in the `telegram::User` shape every client already reads a
+    /// login response into. Bare — id only — when prestige does not know the
+    /// account; see `known`.
+    pub profile: telegram::User,
+    /// A freshly minted token for this account.
+    pub token: String,
+    /// Whether prestige knew the account.
+    ///
+    /// `false` means one of two things and the project cannot tell them
+    /// apart: a token minted by a legacy Telegram login for someone prestige
+    /// has not seen, or prestige being unreachable. Either way there is
+    /// nothing to seed a new local row *from* — so a project that has no row
+    /// for this id should refuse rather than create one under a derived
+    /// handle, and a project that already has one should carry on.
+    pub known: bool,
+}
+
+/// Resolves the account behind an id into a `Session`.
+///
+/// Infallible on purpose: prestige being unreachable is not a reason to
+/// refuse someone whose row this project already has, and the caller decides
+/// that with `known`.
+pub async fn resolve_session(
+    client: &reqwest::Client,
+    internal_secret: &str,
+    id: i64,
+) -> Session {
+    let account = match fetch_account(client, internal_secret, id).await {
+        Ok(account) => account,
+        Err(e) => {
+            println!("session {id}: {e}");
+            None
+        }
+    };
+
+    let profile = match &account {
+        Some(a) => a.as_telegram_user(),
+        None => telegram::User {
+            id,
+            first_name: String::new(),
+            last_name: String::new(),
+            username: String::new(),
+            language_code: String::new(),
+            is_premium: false,
+            allows_write_to_pm: false,
+            photo_url: String::new(),
+        },
+    };
+
+    Session { profile, token: issue_token(id), known: account.is_some() }
+}
+
+impl LoginResult {
+    /// The shape a client already handles for a login it did not get: no
+    /// token, no user. Every project answered this by writing the four
+    /// fields out, and writing them out is how one of them once shipped a
+    /// *valid* token beside a `None` user.
+    pub fn rejected() -> Self {
+        LoginResult { token: String::new(), user: None, data: None, is_created: false }
+    }
+}
+
 /// Reads an account from prestige, by id, with the internal secret.
 ///
 /// `Ok(None)` is an id prestige has never issued — which, for a token that
@@ -420,5 +559,52 @@ where
             return Ok(None);
         }
         <Self as FromRequestParts<S>>::from_request_parts(parts, state).await.map(Some)
+    }
+}
+#[cfg(test)]
+mod gate_tests {
+    use super::*;
+
+    fn with_env(coffee: Option<&str>, admins: Option<&str>) -> Gate {
+        Gate::parse(coffee, admins)
+    }
+
+    #[test]
+    fn an_unset_admins_list_is_empty_not_a_panic() {
+        // Two services shipped `.expect("Not valid ID")` over `"".split(',')`,
+        // so an unset ADMINS took them down at boot.
+        let gate = with_env(None, None);
+        assert!(gate.admins.is_empty());
+        assert!(gate.allows(1), "open when there is no coffee break");
+
+        let gate = with_env(Some("true"), Some(""));
+        assert!(gate.admins.is_empty());
+        assert!(!gate.allows(1), "closed, and nobody is an admin");
+    }
+
+    #[test]
+    fn a_trailing_comma_or_a_stray_word_does_not_take_the_service_down() {
+        let gate = with_env(Some("true"), Some("7, 8, , nonsense,9"));
+        assert_eq!(gate.admins, vec![7, 8, 9]);
+        assert!(gate.allows(7));
+        assert!(!gate.allows(10));
+    }
+
+    #[test]
+    fn a_coffee_break_is_only_true() {
+        assert!(with_env(Some("true"), None).is_coffee_break);
+        assert!(with_env(Some("TRUE"), None).is_coffee_break);
+        // Anything else is open -- a typo must not close the service.
+        assert!(!with_env(Some("yes"), None).is_coffee_break);
+        assert!(!with_env(Some("false"), None).is_coffee_break);
+        assert!(!with_env(None, None).is_coffee_break);
+    }
+
+    #[test]
+    fn an_admin_is_let_in_during_a_break() {
+        let gate = with_env(Some("true"), Some("863009768"));
+        assert!(gate.allows(863009768));
+        assert!(gate.is_admin(863009768));
+        assert!(!gate.allows(1));
     }
 }
