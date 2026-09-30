@@ -164,6 +164,46 @@ pub fn bearer(headers: &axum::http::HeaderMap) -> Option<&str> {
 // their own `users` row — keyed by the same id — for whatever is theirs, and
 // seed it from this on first sight of a token whose `sub` they do not know.
 
+// ── referrals ─────────────────────────────────────────────────────────────
+
+/// Who invited this person, read off the launch link.
+///
+/// Three spellings reach a `/login`, and all three are in the wild:
+///
+/// - `ref_863009768` -- the pair grammar the engine's `parse_start_param`
+///   produces, because a Telegram `startapp` payload may not contain `=`
+///   or `&`;
+/// - `game_17-ref_863009768` -- the same grammar with more than one pair,
+///   which is what a share link from inside a game carries;
+/// - `863009768` -- the bare id roomtour has always sent.
+///
+/// Anything that is not one of those is nobody, not an error: a malformed
+/// link should cost the person nothing.
+pub fn referral_id(raw: &str) -> Option<i64> {
+    let raw = raw.trim();
+    if raw.is_empty() {
+        return None;
+    }
+
+    // The pair grammar first, since a bare id parses as one fragment with no
+    // underscore and falls through.
+    for pair in raw.split('-') {
+        if let Some((key, value)) = pair.split_once('_') {
+            if key == "ref" {
+                return value.trim().parse().ok();
+            }
+        }
+    }
+
+    // A payload that carries pairs but names no `ref` referred nobody; only
+    // a payload that is *only* an id is the bare spelling.
+    if raw.contains('_') {
+        return None;
+    }
+
+    raw.parse().ok()
+}
+
 /// One way of signing in that is attached to an account.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Identity {
@@ -197,6 +237,12 @@ pub struct Account {
     pub avatar_url: Option<String>,
     #[serde(default)]
     pub language: Option<String>,
+    /// Who brought this person into the ecosystem, or `None` for nobody.
+    /// Set once, when prestige created the account; see `sql/accounts.sql`
+    /// there for why it is an account-level fact rather than a per-project
+    /// one. A project's own reward for it is the project's policy.
+    #[serde(default)]
+    pub referred_by: Option<i64>,
     #[serde(default)]
     pub identities: Vec<Identity>,
 }
@@ -260,13 +306,14 @@ pub async fn login_prestige(
     bot_token: &str,
     client: &reqwest::Client,
     internal_secret: &str,
+    referral: Option<i64>,
 ) -> LoginResult {
     let local = login(init_data, bot_token);
     let Some(user) = local.user.as_ref() else {
         return local;
     };
 
-    match attest_telegram(client, internal_secret, user).await {
+    match attest_telegram(client, internal_secret, user, referral).await {
         Ok((token, account)) => {
             let mut profile = account.as_telegram_user();
             // What initData said about the person right now beats what the
@@ -293,6 +340,7 @@ pub async fn attest_telegram(
     client: &reqwest::Client,
     internal_secret: &str,
     user: &telegram::User,
+    referral: Option<i64>,
 ) -> Result<(String, Account), String> {
     #[derive(Deserialize)]
     struct Session {
@@ -300,10 +348,20 @@ pub async fn attest_telegram(
         user: Account,
     }
 
+    // The user flattened, so a prestige that predates referrals still reads
+    // this body, and an older caller's bare user still reaches a newer one.
+    #[derive(Serialize)]
+    struct Body<'a> {
+        #[serde(flatten)]
+        user: &'a telegram::User,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        referral: Option<i64>,
+    }
+
     let resp = client
         .post(format!("{}/internal/auth/telegram", crate::prestige::host()))
         .header("X-Internal-Secret", internal_secret)
-        .json(user)
+        .json(&Body { user, referral })
         .send().await
         .map_err(|e| format!("prestige unreachable: {e}"))?;
 
@@ -399,6 +457,10 @@ pub struct Session {
     pub profile: telegram::User,
     /// A freshly minted token for this account.
     pub token: String,
+    /// Who referred this person, as prestige has it. `None` when nobody did
+    /// *or* when `known` is false -- a project that pays for referrals must
+    /// check `known` before reading it as "nobody".
+    pub referred_by: Option<i64>,
     /// Whether prestige knew the account.
     ///
     /// `false` means one of two things and the project cannot tell them
@@ -442,7 +504,12 @@ pub async fn resolve_session(
         },
     };
 
-    Session { profile, token: issue_token(id), known: account.is_some() }
+    Session {
+        profile,
+        token: issue_token(id),
+        referred_by: account.as_ref().and_then(|a| a.referred_by),
+        known: account.is_some(),
+    }
 }
 
 impl LoginResult {
@@ -606,5 +673,46 @@ mod gate_tests {
         assert!(gate.allows(863009768));
         assert!(gate.is_admin(863009768));
         assert!(!gate.allows(1));
+    }
+}
+
+#[cfg(test)]
+mod referral_tests {
+    use super::referral_id;
+
+    // The three spellings that reach a `/login` today. All three are in the
+    // wild at once, which is the whole reason this is one function.
+    #[test]
+    fn the_pair_grammar_the_engine_produces() {
+        assert_eq!(referral_id("ref_863009768"), Some(863009768));
+        assert_eq!(referral_id("game_17-ref_863009768"), Some(863009768));
+        assert_eq!(referral_id("ref_863009768-game_17"), Some(863009768));
+    }
+
+    #[test]
+    fn the_bare_id_roomtour_has_always_sent() {
+        assert_eq!(referral_id("863009768"), Some(863009768));
+        assert_eq!(referral_id("  863009768  "), Some(863009768));
+    }
+
+    #[test]
+    fn a_link_that_names_no_referrer_refers_nobody() {
+        // A deep link into a game is not a referral, and must not be read as
+        // one -- `17` is a game id, and crediting user 17 for it would pay a
+        // stranger.
+        assert_eq!(referral_id("game_17"), None);
+        assert_eq!(referral_id("game_17-v_42"), None);
+        assert_eq!(referral_id(""), None);
+        assert_eq!(referral_id("   "), None);
+    }
+
+    #[test]
+    fn nonsense_is_nobody_rather_than_an_error() {
+        assert_eq!(referral_id("ref_notanumber"), None);
+        assert_eq!(referral_id("ref_"), None);
+        assert_eq!(referral_id("-"), None);
+        assert_eq!(referral_id("hello world"), None);
+        // Bigger than an i64: a crafted link must not panic anything.
+        assert_eq!(referral_id("99999999999999999999999"), None);
     }
 }
