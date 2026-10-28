@@ -449,56 +449,9 @@ pub fn verify_signature(
     Ok(key.verify(check.as_bytes(), &signature).is_ok())
 }
 
-/// Verifies the fields the Login Widget hands to its callback URL
-/// (`id`, `first_name`, `auth_date`, `hash`, ...), for the bot whose token
-/// this is. The widget only ever signs for the one bot whose domain the page
-/// is on, so unlike initData there is no bot id to name.
-pub fn validate_login_widget(params: &[(String, String)], bot_token: &str) -> Result<bool, Box<dyn Error>> {
-    use sha2::Digest;
-
-    let provided = field(params, "hash").ok_or("No hash found")?;
-    let check = check_string(params, &["hash"]);
-
-    let secret_key = Sha256::digest(bot_token.as_bytes());
-
-    let mut hmac = Hmac::<Sha256>::new_from_slice(&secret_key)?;
-    hmac.update(check.as_bytes());
-
-    Ok(hmac.verify_slice(&hex::decode(provided)?).is_ok())
-}
-
 #[cfg(test)]
 mod signing_tests {
     use super::*;
-
-    // A Login Widget payload signed by hand with node's crypto for the token
-    // below — the vector is the contract, not the code that recomputes it.
-    const TOKEN: &str = "123456:ABC-DEF1234ghIkl-zyx57W2v1u123ew11";
-    const WIDGET: &str = "id=863009768&first_name=Islom&username=islomdjanets&auth_date=1758240000&hash=";
-
-    fn widget(hash: &str) -> Vec<(String, String)> {
-        parse_init_data(&format!("{}{}", WIDGET, hash)).unwrap()
-    }
-
-    const WIDGET_HASH: &str = "77210ccc9bdb6f5d5bbecd3eaf69b932ee6ab16c33aa432b1ad68c4370130ed3";
-
-    #[test]
-    fn widget_hash_is_hmac_keyed_by_sha256_of_the_token() {
-        assert_eq!(validate_login_widget(&widget(WIDGET_HASH), TOKEN).unwrap(), true);
-    }
-
-    #[test]
-    fn widget_rejects_a_tampered_field_and_the_wrong_key_derivation() {
-        let mut forged = widget(WIDGET_HASH);
-        forged[0].1 = "1".into();
-        assert_eq!(validate_login_widget(&forged, TOKEN).unwrap(), false);
-
-        // The Mini App derivation (`HMAC("WebAppData", token)`) over the same
-        // fields is a different hash, so a widget payload must not pass the
-        // initData validator and vice versa.
-        let as_init_data = format!("{}{}", WIDGET, WIDGET_HASH);
-        assert_eq!(validate_init_data(&as_init_data, TOKEN).unwrap(), false);
-    }
 
     // initData for bot 42, signed with a throwaway Ed25519 key whose public
     // half is below. The production key is the constant; the check is the same.
@@ -535,12 +488,6 @@ mod signing_tests {
 
         // Against the real key it is simply not Telegram's signature.
         assert_eq!(validate_init_data_signature(INIT, 42).unwrap(), false);
-    }
-
-    #[test]
-    fn widget_without_a_hash_is_an_error_not_a_pass() {
-        let params = parse_init_data("id=1&auth_date=1").unwrap();
-        assert!(validate_login_widget(&params, TOKEN).is_err());
     }
 
     #[test]
