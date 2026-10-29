@@ -27,7 +27,12 @@ static PRESTIGE: OnceLock<String> = OnceLock::new();
 /// `tasker::DEFAULT_HOST`: prestige is reached from services that are not
 /// necessarily deployed beside it, and the internal-secret header is what
 /// protects the traffic rather than the network boundary.
-pub const DEFAULT_HOST: &str = "https://prestige.up.railway.app";
+///
+/// `prestige.up.railway.app` still answers and will go on answering, so
+/// this is a rename rather than a cutover -- but it is the host a person
+/// sees on Telegram's and Google's consent screens, so the ecosystem
+/// should not keep two names for one service.
+pub const DEFAULT_HOST: &str = "https://prestigeid.app";
 
 /// Where this deployment's prestige lives.
 ///
